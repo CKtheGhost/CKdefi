@@ -1,4 +1,3 @@
-// server/models/portfolio.js
 const mongoose = require('mongoose');
 
 const portfolioSchema = new mongoose.Schema({
