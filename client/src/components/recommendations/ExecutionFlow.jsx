@@ -3,8 +3,6 @@
 
 import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { toast } from 'react-toastify';
-import transactionService from '../../services/transactionService';
 import { WalletContext } from '../../context/WalletContext';
 import { DataContext } from '../../context/DataContext';
 import Button from '../common/Button';

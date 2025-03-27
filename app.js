@@ -4,9 +4,10 @@ const path = require('path');
 const cors = require('cors');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-const { Anthropic } = require('anthropic');
+const { Anthropic } = require('@anthropic-ai/sdk');
 const { OpenAI } = require('openai');
 const routes = require('./routes');
+const logger = require('./logging');
 
 // Initialize Express app
 const app = express();

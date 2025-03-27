@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useWallet } from '../../context/WalletContext';
+import { useWalletContext } from '../../context/WalletContext';
 
 /**
  * First onboarding step - Wallet connection
@@ -10,7 +10,7 @@ import { useWallet } from '../../context/WalletContext';
  * @param {boolean} props.completed - Whether this step is completed
  */
 const WalletStep = ({ onNext, walletAddress, completed }) => {
-  const { connectWallet, walletConnected } = useWallet();
+  const { connectWallet, walletConnected } = useWalletContext();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState(null);
   
@@ -25,7 +25,7 @@ const WalletStep = ({ onNext, walletAddress, completed }) => {
     
     try {
       await connectWallet();
-      // The connection status will be updated in the useWallet hook
+      // The connection status will be updated in the useWalletContext hook
       // which will trigger the useEffect in parent component
     } catch (error) {
       console.error("Wallet connection error:", error);

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useWallet } from '../../context/WalletContext';
+import { useWalletContext } from '../../context/WalletContext';
 import { useTheme } from '../../context/ThemeContext';
 
 const Navbar = ({ onToggleSidebar }) => {
-  const { walletConnected, walletAddress, disconnectWallet } = useWallet();
+  const { walletConnected, walletAddress, disconnectWallet } = useWalletContext();
   const { darkMode, toggleTheme } = useTheme();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);

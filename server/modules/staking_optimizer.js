@@ -1,15 +1,12 @@
-/**
- * staking_optimizer.js - Staking and yield optimization module for CompounDefi
- * 
- * This module analyzes staking options across Aptos protocols, identifies optimal allocations
- * based on APR, risk, and liquidity factors, and generates personalized recommendations.
- */
+// staking_optimizer.js
+// Core module for CompounDefi staking optimization and yield analysis
 
 const axios = require('axios');
-const { Aptos, AptosConfig, Network } = require('@aptos-labs/ts-sdk');
-const marketDataUtils = require('../utils/marketDataUtils');
+const { Aptos } = require('@aptos-labs/ts-sdk');
+const { aiClient } = require('../utils/aiClients');
+const { formatStakingData, calculateAPR } = require('../utils/marketDataUtils');
 
-// Contract addresses for various Aptos staking protocols
+// Contract addresses for supported staking/lending protocols
 const contracts = {
   amnis: "0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a",
   thala: "0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6",
@@ -17,724 +14,716 @@ const contracts = {
   ditto: "0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5",
   aries: "0x9770fa9c725cbd97eb50b2be5f7416efdfd1f1554beb0750d4dae4c64e860da3",
   echo: "0xeab7ea4d635b6b6add79d5045c4a45d8148d88287b1cfa1c3b6a4b56f46839ed",
+  pancakeswap: "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa",
   liquidswap: "0x190d44266241744264b964a37b8f09863167a12d3e70cda39376cfb4e3561e12",
-  cetus: "0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6",
-  pancakeswap: "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa"
+  cetus: "0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6"
 };
 
-// Initialize Aptos client with fallback RPC endpoints
-const APTOS_RPC_ENDPOINTS = {
-  MAINNET: [
-    "https://fullnode.mainnet.aptoslabs.com/v1",
-    "https://aptos-mainnet.nodereal.io/v1/94b7ed5c0b7e423fa0c7b6fb595e6fc0/v1",
-    "https://aptos-mainnet-rpc.publicnode.com",
-    "https://rpc.ankr.com/aptos"
-  ],
-  TESTNET: [
-    "https://fullnode.testnet.aptoslabs.com/v1",
-    "https://aptos-testnet.nodereal.io/v1/94b7ed5c0b7e423fa0c7b6fb595e6fc0/v1",
-    "https://aptos-testnet-rpc.publicnode.com"
-  ]
+// Risk profiles for different protocols
+const riskProfiles = {
+  amnis: { riskLevel: 'medium', securityScore: 8, liquidityScore: 9 },
+  thala: { riskLevel: 'medium', securityScore: 7, liquidityScore: 8 },
+  tortuga: { riskLevel: 'medium-low', securityScore: 8, liquidityScore: 7 },
+  ditto: { riskLevel: 'medium-high', securityScore: 6, liquidityScore: 7 },
+  aries: { riskLevel: 'medium-high', securityScore: 6, liquidityScore: 6 },
+  echo: { riskLevel: 'high', securityScore: 5, liquidityScore: 5 },
+  pancakeswap: { riskLevel: 'medium', securityScore: 7, liquidityScore: 9 },
+  liquidswap: { riskLevel: 'medium', securityScore: 7, liquidityScore: 8 },
+  cetus: { riskLevel: 'medium', securityScore: 7, liquidityScore: 7 }
 };
 
-let aptosClient = null;
-
-// Initialize Aptos client with the best available endpoint
-async function initializeAptosClient() {
-  if (aptosClient) return aptosClient;
-  
-  const network = process.env.APTOS_NETWORK === 'TESTNET' ? Network.TESTNET : Network.MAINNET;
-  const endpoints = network === Network.TESTNET ? APTOS_RPC_ENDPOINTS.TESTNET : APTOS_RPC_ENDPOINTS.MAINNET;
-  
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`Trying RPC endpoint: ${endpoint}`);
-      const response = await axios.get(`${endpoint}/info`, { 
-        timeout: 5000
-      });
-      
-      if (response.status === 200) {
-        console.log(`Successfully connected to RPC endpoint: ${endpoint}`);
-        
-        const config = new AptosConfig({ 
-          network,
-          clientConfig: {
-            FULLNODE_URL: endpoint,
-            INDEXER_URL: network === Network.TESTNET 
-              ? "https://indexer.testnet.aptoslabs.com/v1/graphql"
-              : "https://indexer.mainnet.aptoslabs.com/v1/graphql"
-          }
-        });
-        
-        aptosClient = new Aptos(config);
-        return aptosClient;
-      }
-    } catch (error) {
-      console.error(`Failed to connect to RPC endpoint ${endpoint}:`, error.message);
-    }
+// Predefined strategies for different risk profiles
+const strategies = {
+  conservative: {
+    name: "Conservative Strategy",
+    description: "Focus on lower risk protocols with stable returns",
+    riskLevel: "low",
+    allocation: [
+      { protocol: "amnis", percentage: 40, product: "Liquid Staking" },
+      { protocol: "tortuga", percentage: 30, product: "Liquid Staking" },
+      { protocol: "thala", percentage: 30, product: "Liquid Staking" }
+    ],
+    apr: 4.6
+  },
+  balanced: {
+    name: "Balanced Strategy",
+    description: "Moderate risk with both staking and lending",
+    riskLevel: "medium",
+    allocation: [
+      { protocol: "amnis", percentage: 35, product: "Liquid Staking" },
+      { protocol: "thala", percentage: 25, product: "Liquid Staking" },
+      { protocol: "echo", percentage: 20, product: "Lending" },
+      { protocol: "pancakeswap", percentage: 20, product: "Liquidity" }
+    ],
+    apr: 5.8
+  },
+  aggressive: {
+    name: "Aggressive Strategy",
+    description: "Higher risk for maximum yield",
+    riskLevel: "high",
+    allocation: [
+      { protocol: "amnis", percentage: 25, product: "Liquid Staking" },
+      { protocol: "echo", percentage: 30, product: "Lending" },
+      { protocol: "pancakeswap", percentage: 30, product: "Liquidity" },
+      { protocol: "aries", percentage: 15, product: "Lending" }
+    ],
+    apr: 7.2
+  },
+  maxYield: {
+    name: "Maximum Yield",
+    description: "Highest risk strategy focused on maximum returns",
+    riskLevel: "very high",
+    allocation: [
+      { protocol: "echo", percentage: 40, product: "Lending" },
+      { protocol: "pancakeswap", percentage: 35, product: "Liquidity" },
+      { protocol: "aries", percentage: 25, product: "Lending" }
+    ],
+    apr: 8.5
   }
-  
-  console.warn(`All RPC endpoints failed, defaulting to first one: ${endpoints[0]}`);
-  const config = new AptosConfig({ 
-    network,
-    clientConfig: {
-      FULLNODE_URL: endpoints[0]
-    }
-  });
-  
-  aptosClient = new Aptos(config);
-  return aptosClient;
-}
+};
 
 /**
- * Fetch current staking data from all supported protocols
- * @returns {Promise<Object>} Staking data including APRs and protocol details
+ * Get current staking and lending rate data from supported protocols
+ * @returns {Promise<Object>} Formatted staking data with APRs and protocol information
  */
 async function getStakingData() {
   try {
-    // Initialize Aptos client if needed
-    await initializeAptosClient();
+    // Initialize protocols data structure
+    let protocols = {
+      amnis: { staking: { apr: 0, product: "stAPT" }, lending: { apr: 0, product: "Lending" } },
+      thala: { staking: { apr: 0, product: "sthAPT" }, lending: { apr: 0, product: "Lending" } },
+      tortuga: { staking: { apr: 0, product: "tAPT" } },
+      ditto: { staking: { apr: 0, product: "dAPT" } },
+      echo: { lending: { apr: 0, product: "Lending" } },
+      aries: { lending: { apr: 0, product: "Lending" } },
+      pancakeswap: { liquidity: { apr: 0, product: "Liquidity Pool" } },
+      liquidswap: { liquidity: { apr: 0, product: "Liquidity Pool" } },
+      cetus: { liquidity: { apr: 0, product: "Liquidity Pool" } }
+    };
     
-    // Parallel fetch staking data from all protocols
+    // Fetch staking rates from on-chain or API sources
     const [
       amnisData,
       thalaData,
       tortugaData,
       dittoData,
+      echoData,
       ariesData,
-      echoData
+      pancakeswapData,
+      liquidswapData,
+      cetusData
     ] = await Promise.allSettled([
-      fetchAmnisStakingData(),
-      fetchThalaStakingData(),
-      fetchTortugaStakingData(),
-      fetchDittoStakingData(),
-      fetchAriesLendingData(),
-      fetchEchoLendingData()
+      fetchAmnisStakingRate(),
+      fetchThalaStakingRate(),
+      fetchTortugaStakingRate(),
+      fetchDittoStakingRate(),
+      fetchEchoLendingRate(),
+      fetchAriesLendingRate(),
+      fetchPancakeswapLiquidityRate(),
+      fetchLiquidswapLiquidityRate(),
+      fetchCetusLiquidityRate()
     ]);
     
-    // Consolidate protocol data
-    const protocolsData = {
-      amnis: amnisData.status === 'fulfilled' ? amnisData.value : createFallbackData('amnis', 'stake'),
-      thala: thalaData.status === 'fulfilled' ? thalaData.value : createFallbackData('thala', 'stake'),
-      tortuga: tortugaData.status === 'fulfilled' ? tortugaData.value : createFallbackData('tortuga', 'stake'),
-      ditto: dittoData.status === 'fulfilled' ? dittoData.value : createFallbackData('ditto', 'stake'),
-      aries: ariesData.status === 'fulfilled' ? ariesData.value : createFallbackData('aries', 'lend'),
-      echo: echoData.status === 'fulfilled' ? echoData.value : createFallbackData('echo', 'lend')
-    };
+    // Update protocol data with fetched rates
+    if (amnisData.status === 'fulfilled') {
+      protocols.amnis.staking.apr = amnisData.value.staking || 4.2;
+      protocols.amnis.lending.apr = amnisData.value.lending || 3.5;
+    }
     
-    // Generate optimal strategies
-    const strategies = generateOptimalStrategies(protocolsData);
+    if (thalaData.status === 'fulfilled') {
+      protocols.thala.staking.apr = thalaData.value.staking || 4.0;
+      protocols.thala.lending.apr = thalaData.value.lending || 3.3;
+    }
     
-    // Get market sentiment and risk analysis
-    const marketAnalysis = await marketDataUtils.getMarketSentiment();
+    if (tortugaData.status === 'fulfilled') {
+      protocols.tortuga.staking.apr = tortugaData.value.staking || 3.8;
+    }
     
-    return {
-      protocols: protocolsData,
+    if (dittoData.status === 'fulfilled') {
+      protocols.ditto.staking.apr = dittoData.value.staking || 3.9;
+    }
+    
+    if (echoData.status === 'fulfilled') {
+      protocols.echo.lending.apr = echoData.value.lending || 5.8;
+    }
+    
+    if (ariesData.status === 'fulfilled') {
+      protocols.aries.lending.apr = ariesData.value.lending || 6.2;
+    }
+    
+    if (pancakeswapData.status === 'fulfilled') {
+      protocols.pancakeswap.liquidity.apr = pancakeswapData.value.liquidity || 7.5;
+    }
+    
+    if (liquidswapData.status === 'fulfilled') {
+      protocols.liquidswap.liquidity.apr = liquidswapData.value.liquidity || 7.0;
+    }
+    
+    if (cetusData.status === 'fulfilled') {
+      protocols.cetus.liquidity.apr = cetusData.value.liquidity || 6.8;
+    }
+    
+    // Format and add additional data
+    const formattedData = {
+      protocols: formatStakingData(protocols),
       strategies,
-      marketAnalysis,
-      lastUpdated: new Date().toISOString(),
-      recommendedProtocol: determineRecommendedProtocol(protocolsData)
+      recommendedProtocol: findHighestYieldProtocol(protocols),
+      lastUpdated: new Date().toISOString()
     };
+    
+    return formattedData;
   } catch (error) {
     console.error('Error getting staking data:', error);
-    return {
-      protocols: {},
-      strategies: {},
-      lastUpdated: new Date().toISOString(),
-      error: error.message
-    };
-  }
-}
-
-/**
- * Fetch staking data from Amnis protocol
- * @returns {Promise<Object>} Protocol staking data
- */
-async function fetchAmnisStakingData() {
-  try {
-    // Fetch on-chain data and API data
-    const response = await axios.get('https://api.amnis.finance/api/v1/staking/stats');
-    
-    // Calculate rewards and APR
-    const aprPercentage = response.data?.apr || response.data?.apy || 4.25;
-    
-    return {
-      name: 'Amnis Finance',
-      apr: aprPercentage.toFixed(2),
-      tvl: response.data?.tvl || '$54.3M',
-      token: 'stAPT',
-      tokenPrice: response.data?.stakingTokenPrice || 12.42,
-      product: 'Liquid Staking',
-      stakingType: 'Liquid',
-      cooldownPeriod: 0,
-      minimumStake: '0.05 APT',
-      features: ['No lockup', 'Liquid staking', 'Ecosystem integrations'],
-      risks: ['Smart contract risk', 'Oracle risk'],
-      riskRating: 2,
-      staking: {
-        apr: aprPercentage.toFixed(2),
-        product: 'Liquid Staking',
-        lockupPeriod: '0 days'
-      },
-      website: 'https://amnis.finance',
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Error fetching Amnis data:', error);
     throw error;
   }
 }
 
 /**
- * Fetch staking data from Thala protocol
- * @returns {Promise<Object>} Protocol staking data
- */
-async function fetchThalaStakingData() {
-  try {
-    // Fetch on-chain data and API data
-    const response = await axios.get('https://api.thala.fi/aptos/liquid-staking');
-    
-    // Calculate rewards and APR
-    const aprPercentage = response.data?.apr || 4.35;
-    
-    return {
-      name: 'Thala Labs',
-      apr: aprPercentage.toFixed(2),
-      tvl: response.data?.tvl || '$41.7M',
-      token: 'sthAPT',
-      tokenPrice: response.data?.tokenPrice || 12.47,
-      product: 'Liquid Staking',
-      stakingType: 'Liquid',
-      cooldownPeriod: 0,
-      minimumStake: '0.05 APT',
-      features: ['No lockup', 'Yield from validators', 'MEV sharing'],
-      risks: ['Smart contract risk', 'Validator risk'],
-      riskRating: 2,
-      staking: {
-        apr: aprPercentage.toFixed(2),
-        product: 'Liquid Staking',
-        lockupPeriod: '0 days'
-      },
-      website: 'https://app.thala.fi',
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Error fetching Thala data:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch staking data from Tortuga protocol
- * @returns {Promise<Object>} Protocol staking data
- */
-async function fetchTortugaStakingData() {
-  try {
-    // Fetch on-chain data and API data
-    const response = await axios.get('https://api.tortuga.finance/api/v1/stats');
-    
-    // Calculate rewards and APR
-    const aprPercentage = response.data?.apr || 4.3;
-    
-    return {
-      name: 'Tortuga Finance',
-      apr: aprPercentage.toFixed(2),
-      tvl: response.data?.tvl || '$37.5M',
-      token: 'tAPT',
-      tokenPrice: response.data?.tokenPrice || 12.45,
-      product: 'Liquid Staking',
-      stakingType: 'Liquid',
-      cooldownPeriod: 0,
-      minimumStake: '0.1 APT',
-      features: ['No lockup', 'Liquid staking', 'Validator diversification'],
-      risks: ['Smart contract risk', 'Oracle risk', 'Validator risk'],
-      riskRating: 2.5,
-      staking: {
-        apr: aprPercentage.toFixed(2),
-        product: 'Liquid Staking',
-        lockupPeriod: '0 days'
-      },
-      website: 'https://app.tortuga.finance',
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Error fetching Tortuga data:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch staking data from Ditto protocol
- * @returns {Promise<Object>} Protocol staking data
- */
-async function fetchDittoStakingData() {
-  try {
-    // Fetch on-chain data and API data
-    const response = await axios.get('https://api.dittofinance.io/stats');
-    
-    // Calculate rewards and APR
-    const aprPercentage = response.data?.apr || 4.28;
-    
-    return {
-      name: 'Ditto Finance',
-      apr: aprPercentage.toFixed(2),
-      tvl: response.data?.tvl || '$18.3M',
-      token: 'dAPT',
-      tokenPrice: response.data?.tokenPrice || 12.44,
-      product: 'Liquid Staking',
-      stakingType: 'Liquid',
-      cooldownPeriod: 0,
-      minimumStake: '0.1 APT',
-      features: ['No lockup', 'Liquid staking', 'Staking rewards'],
-      risks: ['Smart contract risk', 'Market risk'],
-      riskRating: 2.5,
-      staking: {
-        apr: aprPercentage.toFixed(2),
-        product: 'Liquid Staking',
-        lockupPeriod: '0 days'
-      },
-      website: 'https://ditto.finance',
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Error fetching Ditto data:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch lending data from Aries Markets 
- * @returns {Promise<Object>} Protocol lending data
- */
-async function fetchAriesLendingData() {
-  try {
-    // Fetch API data
-    const response = await axios.get('https://api.ariesmarkets.xyz/markets');
-    
-    // Find APT market data
-    const aptMarket = response.data?.markets?.find(m => m.symbol === 'APT') || {};
-    
-    const supplyApr = aptMarket.supplyApr || 3.8;
-    
-    return {
-      name: 'Aries Markets',
-      apr: supplyApr.toFixed(2),
-      tvl: aptMarket.tvl || '$12.5M',
-      product: 'Lending',
-      token: 'APT',
-      tokenPrice: aptMarket.price || 12.45,
-      features: ['Variable APR', 'No lockup', 'Borrow against assets'],
-      risks: ['Smart contract risk', 'Liquidation risk', 'Interest rate risk'],
-      riskRating: 3.2,
-      lending: {
-        apr: supplyApr.toFixed(2),
-        product: 'APT Lending',
-        lockupPeriod: '0 days'
-      },
-      website: 'https://ariesmarkets.xyz',
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Error fetching Aries data:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch lending data from Echo protocol
- * @returns {Promise<Object>} Protocol lending data
- */
-async function fetchEchoLendingData() {
-  try {
-    // Fetch API data
-    const response = await axios.get('https://api.echo.finance/markets');
-    
-    // Find APT market data
-    const aptMarket = response.data?.markets?.find(m => m.asset === 'APT') || {};
-    
-    const supplyApr = aptMarket.supplyApr || 3.7;
-    
-    return {
-      name: 'Echo Finance',
-      apr: supplyApr.toFixed(2),
-      tvl: aptMarket.tvl || '$9.8M',
-      product: 'Lending',
-      token: 'APT',
-      tokenPrice: aptMarket.price || 12.45,
-      features: ['Variable APR', 'No lockup', 'Multiple collateral types'],
-      risks: ['Smart contract risk', 'Liquidation risk', 'Market risk'],
-      riskRating: 3.2,
-      lending: {
-        apr: supplyApr.toFixed(2),
-        product: 'APT Lending',
-        lockupPeriod: '0 days'
-      },
-      website: 'https://echo.finance',
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Error fetching Echo data:', error);
-    throw error;
-  }
-}
-
-/**
- * Create fallback data when API calls fail
- * @param {String} protocol - Protocol identifier
- * @param {String} type - Protocol type (stake, lend, etc.)
- * @returns {Object} Fallback protocol data
- */
-function createFallbackData(protocol, type) {
-  const fallbackValues = {
-    amnis: { name: 'Amnis Finance', apr: '4.25', tvl: '$54.3M', token: 'stAPT' },
-    thala: { name: 'Thala Labs', apr: '4.35', tvl: '$41.7M', token: 'sthAPT' },
-    tortuga: { name: 'Tortuga Finance', apr: '4.30', tvl: '$37.5M', token: 'tAPT' },
-    ditto: { name: 'Ditto Finance', apr: '4.28', tvl: '$18.3M', token: 'dAPT' },
-    aries: { name: 'Aries Markets', apr: '3.80', tvl: '$12.5M', token: 'APT' },
-    echo: { name: 'Echo Finance', apr: '3.70', tvl: '$9.8M', token: 'APT' }
-  };
-  
-  const values = fallbackValues[protocol] || { 
-    name: protocol.charAt(0).toUpperCase() + protocol.slice(1), 
-    apr: '4.00', 
-    tvl: '$10M', 
-    token: 'APT' 
-  };
-  
-  const result = {
-    name: values.name,
-    apr: values.apr,
-    tvl: values.tvl,
-    token: values.token,
-    tokenPrice: 12.45,
-    product: type === 'stake' ? 'Liquid Staking' : 'Lending',
-    features: ['Fallback data', 'API unavailable'],
-    risks: ['Data accuracy risk'],
-    riskRating: 3.0,
-    lastUpdated: new Date().toISOString()
-  };
-  
-  if (type === 'stake') {
-    result.staking = {
-      apr: values.apr,
-      product: 'Liquid Staking',
-      lockupPeriod: '0 days'
-    };
-  } else if (type === 'lend') {
-    result.lending = {
-      apr: values.apr,
-      product: 'APT Lending',
-      lockupPeriod: '0 days'
-    };
-  }
-  
-  return result;
-}
-
-/**
- * Generate optimal strategy allocations based on risk profiles
- * @param {Object} protocolsData - Protocol data
- * @returns {Object} Optimal strategies
- */
-function generateOptimalStrategies(protocolsData) {
-  // Sort protocols by APR
-  const sortedByApr = Object.entries(protocolsData)
-    .sort((a, b) => parseFloat(b[1].apr) - parseFloat(a[1].apr));
-  
-  // Sort protocols by security (inverse of risk rating)
-  const sortedBySecurity = Object.entries(protocolsData)
-    .sort((a, b) => parseFloat(a[1].riskRating) - parseFloat(b[1].riskRating));
-  
-  // Create conservative strategy (prioritize security)
-  const conservativeStrategy = {
-    name: 'Conservative Strategy',
-    description: 'Focus on protocols with lower risk and established security track records',
-    riskLevel: 'Conservative',
-    allocation: createAllocation([
-      { protocol: sortedBySecurity[0][0], percentage: 50 },
-      { protocol: sortedBySecurity[1][0], percentage: 30 },
-      { protocol: sortedBySecurity[2][0], percentage: 20 }
-    ], protocolsData)
-  };
-  
-  // Create balanced strategy
-  const balancedStrategy = {
-    name: 'Balanced Strategy',
-    description: 'Balance between yield and security across multiple protocols',
-    riskLevel: 'Balanced',
-    allocation: createAllocation([
-      { protocol: sortedByApr[1][0], percentage: 40 },
-      { protocol: sortedByApr[0][0], percentage: 30 },
-      { protocol: sortedBySecurity[0][0], percentage: 30 }
-    ], protocolsData)
-  };
-  
-  // Create aggressive strategy (prioritize yield)
-  const aggressiveStrategy = {
-    name: 'Aggressive Strategy',
-    description: 'Focus on maximum yield across leading protocols',
-    riskLevel: 'Aggressive',
-    allocation: createAllocation([
-      { protocol: sortedByApr[0][0], percentage: 60 },
-      { protocol: sortedByApr[1][0], percentage: 25 },
-      { protocol: sortedByApr[2][0], percentage: 15 }
-    ], protocolsData)
-  };
-  
-  // Add blended APRs
-  conservativeStrategy.apr = calculateBlendedApr(conservativeStrategy.allocation);
-  balancedStrategy.apr = calculateBlendedApr(balancedStrategy.allocation);
-  aggressiveStrategy.apr = calculateBlendedApr(aggressiveStrategy.allocation);
-  
-  return {
-    conservative: conservativeStrategy,
-    balanced: balancedStrategy,
-    aggressive: aggressiveStrategy
-  };
-}
-
-/**
- * Create allocation with protocol details
- * @param {Array} allocations - Allocation percentages by protocol
- * @param {Object} protocolsData - Protocol data
- * @returns {Array} Complete allocation data
- */
-function createAllocation(allocations, protocolsData) {
-  return allocations.map(item => {
-    const protocol = protocolsData[item.protocol];
-    return {
-      protocol: item.protocol,
-      percentage: item.percentage,
-      expectedApr: protocol.apr,
-      product: protocol.staking?.product || protocol.lending?.product || protocol.product,
-      token: protocol.token
-    };
-  });
-}
-
-/**
- * Calculate blended APR for an allocation
- * @param {Array} allocation - Portfolio allocation
- * @returns {String} Blended APR
- */
-function calculateBlendedApr(allocation) {
-  if (!allocation || allocation.length === 0) return '0.00';
-  
-  const weightedSum = allocation.reduce((sum, item) => {
-    return sum + (parseFloat(item.expectedApr) * (item.percentage / 100));
-  }, 0);
-  
-  return weightedSum.toFixed(2);
-}
-
-/**
- * Determine recommended protocol based on APR and risk
- * @param {Object} protocolsData - Protocol data
- * @returns {String} Recommended protocol id
- */
-function determineRecommendedProtocol(protocolsData) {
-  if (Object.keys(protocolsData).length === 0) return 'amnis';
-  
-  // Create scoring system based on APR (70%) and safety (30%)
-  const scoredProtocols = Object.entries(protocolsData).map(([id, data]) => {
-    const aprScore = parseFloat(data.apr) * 0.7;
-    const safetyScore = (5 - (data.riskRating || 3)) * 0.6; // Invert risk rating
-    
-    return {
-      id,
-      score: aprScore + safetyScore
-    };
-  });
-  
-  // Sort by score and return highest
-  scoredProtocols.sort((a, b) => b.score - a.score);
-  
-  return scoredProtocols[0]?.id || 'amnis';
-}
-
-/**
- * Generate personalized recommendation based on wallet data 
- * @param {String} walletAddress - User's wallet address
+ * Generate personalized staking recommendations based on wallet data
+ * @param {string} walletAddress - User's wallet address
  * @param {Object} portfolioData - User's portfolio data
- * @returns {Promise<Object>} Personalized recommendation
+ * @returns {Promise<Object>} Personalized staking recommendations
  */
 async function getPersonalizedRecommendations(walletAddress, portfolioData) {
   try {
+    if (!walletAddress || !portfolioData) {
+      throw new Error('Wallet address and portfolio data required');
+    }
+    
     // Get latest staking data
     const stakingData = await getStakingData();
     
-    // Determine user's risk profile based on portfolio composition
+    // Determine risk profile based on portfolio composition
     const riskProfile = determineRiskProfile(portfolioData);
     
-    // Get strategy based on risk profile
-    const strategy = stakingData.strategies[riskProfile.profile];
+    // Get appropriate strategy for risk profile
+    let recommendedStrategy = strategies[riskProfile];
     
-    // Generate personalized earning projections
-    const totalApt = calculateTotalAptValue(portfolioData);
-    const potentialEarnings = calculatePotentialEarnings(totalApt, strategy.apr);
+    // Calculate potential earnings
+    const potentialEarnings = calculatePotentialEarnings(
+      portfolioData.totalValueUSD,
+      recommendedStrategy.apr
+    );
     
-    // Generate action items
-    const actionItems = generateActionItems(portfolioData, strategy, stakingData.protocols);
+    // Prepare staked positions data for AI analysis
+    const stakedPositions = prepareStakedPositionsData(portfolioData);
+    
+    // Get personalized action items using AI
+    const actionItems = await getActionItems(walletAddress, portfolioData, stakingData, riskProfile);
+    
+    // Prepare alternative strategies
+    const alternativeStrategies = getAlternativeStrategies(riskProfile);
     
     return {
       walletAddress,
-      riskProfile: riskProfile.profile,
-      factors: riskProfile.factors,
-      recommendedStrategy: {
-        ...strategy,
-        amount: totalApt.toFixed(2),
-        potentialApr: strategy.apr
-      },
+      riskProfile,
+      recommendedStrategy,
       potentialEarnings,
+      stakedPositions,
       actionItems,
-      alternativeStrategies: Object.values(stakingData.strategies)
-        .filter(s => s.riskLevel !== riskProfile.profile)
-        .map(s => ({
-          name: s.name,
-          description: s.description,
-          riskLevel: s.riskLevel,
-          apr: s.apr
-        })),
+      alternativeStrategies,
       lastUpdated: new Date().toISOString()
     };
   } catch (error) {
-    console.error('Error generating personalized recommendations:', error);
-    return {
-      walletAddress,
-      riskProfile: 'balanced',
-      error: error.message,
-      lastUpdated: new Date().toISOString()
-    };
+    console.error(`Error generating personalized recommendations for ${walletAddress}:`, error);
+    throw error;
   }
 }
 
 /**
  * Determine user's risk profile based on portfolio composition
- * @param {Object} portfolioData - User's portfolio data
- * @returns {Object} Risk profile and contributing factors
+ * @param {Object} portfolioData - User portfolio data
+ * @returns {string} Risk profile (conservative, balanced, aggressive, maxYield)
  */
 function determineRiskProfile(portfolioData) {
-  const factors = [];
-  let riskPoints = 0;
-  
-  // Check if portfolio contains multiple token types
-  const hasStakedTokens = portfolioData.stAPT?.amount > 0 || 
-                         portfolioData.sthAPT?.amount > 0 || 
-                         portfolioData.tAPT?.amount > 0;
-  
-  if (hasStakedTokens) {
-    factors.push('Already participating in staking');
-    riskPoints += 1;
+  try {
+    const totalValue = parseFloat(portfolioData.totalValueUSD) || 0;
+    const aptBalance = parseFloat(portfolioData.apt?.amount) || 0;
+    const stakedAmount = parseFloat(portfolioData.stAPT?.amount || 0) +
+                        parseFloat(portfolioData.sthAPT?.amount || 0) +
+                        parseFloat(portfolioData.tAPT?.amount || 0) +
+                        parseFloat(portfolioData.dAPT?.amount || 0);
+    
+    const hasLiquidity = portfolioData.ammLiquidity && portfolioData.ammLiquidity.hasLiquidity;
+    
+    // Calculate staked ratio
+    const stakedRatio = totalValue > 0 ? stakedAmount / totalValue : 0;
+    
+    // Determine risk profile based on portfolio composition
+    if (hasLiquidity && stakedRatio < 0.3) {
+      return 'aggressive'; // Already has liquidity positions and low staking ratio
+    } else if (hasLiquidity) {
+      return 'balanced'; // Has liquidity but also significant staking
+    } else if (stakedRatio > 0.7) {
+      return 'conservative'; // Heavily staked
+    } else if (stakedRatio > 0.4) {
+      return 'balanced'; // Moderately staked
+    } else if (totalValue > 10000) {
+      return 'aggressive'; // Large portfolio value
+    } else if (totalValue > 1000) {
+      return 'balanced'; // Medium portfolio value
+    }
+    
+    // Default to conservative for smaller portfolios
+    return 'conservative';
+  } catch (error) {
+    console.error('Error determining risk profile:', error);
+    return 'balanced'; // Default to balanced if error
   }
-  
-  // Check for LP positions
-  if (portfolioData.ammLiquidity?.hasLiquidity) {
-    factors.push('Has AMM liquidity positions');
-    riskPoints += 2;
-  }
-  
-  // Check portfolio value
-  const totalValue = parseFloat(portfolioData.totalValueUSD || 0);
-  if (totalValue > 50000) {
-    factors.push('Large portfolio value');
-    riskPoints += 1;
-  } else if (totalValue < 5000) {
-    factors.push('Smaller portfolio value');
-    riskPoints -= 1;
-  }
-  
-  // Check for recent transactions
-  if (portfolioData.recentTransactions?.length > 10) {
-    factors.push('Active trader');
-    riskPoints += 1;
-  }
-  
-  // Determine profile
-  let profile;
-  if (riskPoints >= 2) {
-    profile = 'aggressive';
-  } else if (riskPoints <= -1) {
-    profile = 'conservative';
-  } else {
-    profile = 'balanced';
-  }
-  
-  return { profile, factors };
 }
 
 /**
- * Calculate total APT value in the portfolio
- * @param {Object} portfolioData - User's portfolio data
- * @returns {Number} Total APT value
+ * Get alternative strategies based on user's risk profile
+ * @param {string} currentRiskProfile - User's current risk profile
+ * @returns {Array} Alternative strategies
  */
-function calculateTotalAptValue(portfolioData) {
-  // Native APT
-  let totalApt = parseFloat(portfolioData.apt?.amount || 0);
-  
-  // Staked tokens (approximate APT value)
-  totalApt += parseFloat(portfolioData.stAPT?.amount || 0);
-  totalApt += parseFloat(portfolioData.sthAPT?.amount || 0);
-  totalApt += parseFloat(portfolioData.tAPT?.amount || 0);
-  
-  return totalApt;
+function getAlternativeStrategies(currentRiskProfile) {
+  try {
+    // Return all strategies except the current one
+    return Object.entries(strategies)
+      .filter(([key]) => key !== currentRiskProfile)
+      .map(([_, strategy]) => ({
+        name: strategy.name,
+        description: strategy.description,
+        riskLevel: strategy.riskLevel,
+        apr: strategy.apr
+      }));
+  } catch (error) {
+    console.error('Error getting alternative strategies:', error);
+    return [];
+  }
 }
 
 /**
- * Calculate potential earnings based on APT amount and APR
- * @param {Number} aptAmount - Total APT amount
- * @param {String|Number} apr - Annual percentage rate 
- * @returns {Object} Potential earnings
+ * Calculate potential earnings based on investment amount and APR
+ * @param {number} amount - Investment amount
+ * @param {number} apr - Annual percentage rate
+ * @returns {Object} Monthly and yearly potential earnings
  */
-function calculatePotentialEarnings(aptAmount, apr) {
-  const aprValue = parseFloat(apr);
-  if (isNaN(aprValue) || isNaN(aptAmount)) {
+function calculatePotentialEarnings(amount, apr) {
+  try {
+    const yearlyEarnings = (amount * apr) / 100;
+    const monthlyEarnings = yearlyEarnings / 12;
+    
+    return {
+      monthly: monthlyEarnings.toFixed(2),
+      yearly: yearlyEarnings.toFixed(2)
+    };
+  } catch (error) {
+    console.error('Error calculating potential earnings:', error);
     return { monthly: '0.00', yearly: '0.00' };
   }
-  
-  // Assuming APT price is $12.45
-  const aptPrice = 12.45;
-  const annualAptEarnings = aptAmount * (aprValue / 100);
-  const annualUsdEarnings = annualAptEarnings * aptPrice;
-  
-  return {
-    monthly: (annualUsdEarnings / 12).toFixed(2),
-    yearly: annualUsdEarnings.toFixed(2),
-    apt: {
-      monthly: (annualAptEarnings / 12).toFixed(2),
-      yearly: annualAptEarnings.toFixed(2)
-    }
-  };
 }
 
 /**
- * Generate action items based on portfolio and recommended strategy
- * @param {Object} portfolioData - User's portfolio data
- * @param {Object} strategy - Recommended strategy
- * @param {Object} protocols - Protocol data
- * @returns {Array} Action items
+ * Find the protocol with the highest yield
+ * @param {Object} protocols - Protocol data with APRs
+ * @returns {string} Highest yield protocol name
  */
-function generateActionItems(portfolioData, strategy, protocols) {
-  const actionItems = [];
-  
-  // Get unstaked APT amount
-  const unstakedApt = parseFloat(portfolioData.apt?.amount || 0);
-  
-  // Get already staked amounts
-  const stakedAmounts = {
-    amnis: parseFloat(portfolioData.stAPT?.amount || 0),
-    thala: parseFloat(portfolioData.sthAPT?.amount || 0),
-    tortuga: parseFloat(portfolioData.tAPT?.amount || 0)
-  };
-  
-  // Generate optimized allocation
-  strategy.allocation.forEach(allocation => {
-    const protocol = allocation.protocol;
-    const targetPercentage = allocation.percentage;
-    const currentStaked = stakedAmounts[protocol] || 0;
-    const totalApt = calculateTotalAptValue(portfolioData);
-    const targetAmount = (targetPercentage / 100) * totalApt;
+function findHighestYieldProtocol(protocols) {
+  try {
+    let highestYield = 0;
+    let highestYieldProtocol = '';
     
-    // Calculate difference
-    const difference = targetAmount - currentStaked;
+    // Check each protocol and their products
+    Object.entries(protocols).forEach(([protocol, products]) => {
+      Object.entries(products).forEach(([productType, data]) => {
+        if (data.apr > highestYield) {
+          highestYield = data.apr;
+          highestYieldProtocol = protocol;
+        }
+      });
+    });
     
-    if (difference > 0 && difference >= 0.1) {
+    return highestYieldProtocol;
+  } catch (error) {
+    console.error('Error finding highest yield protocol:', error);
+    return 'amnis'; // Default to amnis if error
+  }
+}
+
+/**
+ * Prepare staked positions data from portfolio
+ * @param {Object} portfolioData - User portfolio data
+ * @returns {Array} Staked positions details
+ */
+function prepareStakedPositionsData(portfolioData) {
+  try {
+    const stakedPositions = [];
+    
+    // Check for stAPT (Amnis)
+    if (portfolioData.stAPT && parseFloat(portfolioData.stAPT.amount) > 0) {
+      stakedPositions.push({
+        protocol: 'amnis',
+        token: 'stAPT',
+        amount: portfolioData.stAPT.amount,
+        valueUSD: portfolioData.stAPT.valueUSD
+      });
+    }
+    
+    // Check for sthAPT (Thala)
+    if (portfolioData.sthAPT && parseFloat(portfolioData.sthAPT.amount) > 0) {
+      stakedPositions.push({
+        protocol: 'thala',
+        token: 'sthAPT',
+        amount: portfolioData.sthAPT.amount,
+        valueUSD: portfolioData.sthAPT.valueUSD
+      });
+    }
+    
+    // Check for tAPT (Tortuga)
+    if (portfolioData.tAPT && parseFloat(portfolioData.tAPT.amount) > 0) {
+      stakedPositions.push({
+        protocol: 'tortuga',
+        token: 'tAPT',
+        amount: portfolioData.tAPT.amount,
+        valueUSD: portfolioData.tAPT.valueUSD
+      });
+    }
+    
+    // Check for dAPT (Ditto)
+    if (portfolioData.dAPT && parseFloat(portfolioData.dAPT.amount) > 0) {
+      stakedPositions.push({
+        protocol: 'ditto',
+        token: 'dAPT',
+        amount: portfolioData.dAPT.amount,
+        valueUSD: portfolioData.dAPT.valueUSD
+      });
+    }
+    
+    return stakedPositions;
+  } catch (error) {
+    console.error('Error preparing staked positions data:', error);
+    return [];
+  }
+}
+
+/**
+ * Get personalized action items using AI analysis
+ * @param {string} walletAddress - User's wallet address
+ * @param {Object} portfolioData - User's portfolio data
+ * @param {Object} stakingData - Current staking rates data
+ * @param {string} riskProfile - User's risk profile
+ * @returns {Promise<Array>} Action items for the user
+ */
+async function getActionItems(walletAddress, portfolioData, stakingData, riskProfile) {
+  try {
+    // Prepare data for AI analysis
+    const portfolioSummary = {
+      totalValueUSD: portfolioData.totalValueUSD,
+      aptBalance: portfolioData.apt?.amount || 0,
+      stakedPositions: prepareStakedPositionsData(portfolioData),
+      hasLiquidity: portfolioData.ammLiquidity && portfolioData.ammLiquidity.hasLiquidity
+    };
+    
+    // Prepare current market conditions
+    const marketSummary = {
+      topProtocols: findTopProtocols(stakingData.protocols, 3),
+      recommendedStrategy: strategies[riskProfile],
+      currentRiskProfile: riskProfile
+    };
+    
+    // Generate action items using AI
+    const prompt = `
+      As a DeFi yield optimizer for Aptos blockchain, analyze this wallet portfolio and market data:
+      
+      Wallet: ${walletAddress}
+      Portfolio Summary: ${JSON.stringify(portfolioSummary)}
+      Market Summary: ${JSON.stringify(marketSummary)}
+      
+      Provide a JSON array of 2-3 specific action items to optimize this portfolio based on the risk profile "${riskProfile}".
+      
+      Each action item should contain:
+      - action: (string) A clear action instruction
+      - details: (string) Explanation of why this action is recommended
+      - protocol: (string) Target protocol
+      - type: (string) Type of operation (stake, unstake, lend, etc.)
+      - amount: (number) Recommended amount in APT
+      - contractAddress: (string) Contract address if available
+      - functionName: (string) Function name if available
+      
+      Focus on providing specific, actionable steps that will improve portfolio yield and align with the risk profile.
+    `;
+    
+    let actionItems;
+    try {
+      const aiResponse = await aiClient.generateRecommendation(prompt);
+      actionItems = extractJsonFromAIResponse(aiResponse);
+      
+      // Validate AI response format
+      if (!Array.isArray(actionItems)) {
+        throw new Error('Invalid AI response format');
+      }
+      
+      // Add contract addresses if missing
+      actionItems = actionItems.map(item => {
+        if (!item.contractAddress && item.protocol && contracts[item.protocol.toLowerCase()]) {
+          item.contractAddress = contracts[item.protocol.toLowerCase()];
+        }
+        return item;
+      });
+    } catch (aiError) {
+      console.error('AI recommendation error:', aiError);
+      // Fallback to predefined action items
+      actionItems = getFallbackActionItems(portfolioData, riskProfile);
+    }
+    
+    return actionItems;
+  } catch (error) {
+    console.error('Error generating action items:', error);
+    return getFallbackActionItems(portfolioData, riskProfile);
+  }
+}
+
+/**
+ * Get fallback action items in case AI analysis fails
+ * @param {Object} portfolioData - User's portfolio data
+ * @param {string} riskProfile - User's risk profile
+ * @returns {Array} Fallback action items
+ */
+function getFallbackActionItems(portfolioData, riskProfile) {
+  const aptAmount = parseFloat(portfolioData.apt?.amount) || 0;
+  const totalValue = parseFloat(portfolioData.totalValueUSD) || 0;
+  
+  // Default action items based on risk profile
+  switch (riskProfile) {
+    case 'conservative':
+      return [
+        {
+          action: `Stake ${(aptAmount * 0.5).toFixed(2)} APT with Amnis`,
+          details: "Amnis offers one of the safest staking options with competitive yields",
+          protocol: "amnis",
+          type: "stake",
+          amount: (aptAmount * 0.5).toFixed(2),
+          contractAddress: contracts.amnis,
+          functionName: "::staking::stake"
+        },
+        {
+          action: "Diversify staking across protocols",
+          details: "Split your staking between multiple providers to reduce protocol risk",
+          protocol: "thala",
+          type: "stake",
+          amount: (aptAmount * 0.3).toFixed(2),
+          contractAddress: contracts.thala,
+          functionName: "::staking::stake_apt"
+        }
+      ];
+      
+    case 'balanced':
+      return [
+        {
+          action: `Stake ${(aptAmount * 0.4).toFixed(2)} APT with Amnis`,
+          details: "Liquid staking with Amnis provides a solid foundation for your portfolio",
+          protocol: "amnis",
+          type: "stake",
+          amount: (aptAmount * 0.4).toFixed(2),
+          contractAddress: contracts.amnis,
+          functionName: "::staking::stake"
+        },
+        {
+          action: `Provide ${(aptAmount * 0.3).toFixed(2)} APT as liquidity`,
+          details: "Add some liquidity exposure for higher yields while maintaining moderate risk",
+          protocol: "pancakeswap",
+          type: "addLiquidity",
+          amount: (aptAmount * 0.3).toFixed(2),
+          contractAddress: contracts.pancakeswap,
+          functionName: "::router::add_liquidity"
+        }
+      ];
+      
+    case 'aggressive':
+      return [
+        {
+          action: `Lend ${(aptAmount * 0.4).toFixed(2)} APT on Echo`,
+          details: "Echo offers high lending APRs for APT with manageable risk",
+          protocol: "echo",
+          type: "lend",
+          amount: (aptAmount * 0.4).toFixed(2),
+          contractAddress: contracts.echo,
+          functionName: "::lending::supply"
+        },
+        {
+          action: `Provide ${(aptAmount * 0.4).toFixed(2)} APT as liquidity`,
+          details: "Maximize your yield by adding significant liquidity exposure",
+          protocol: "pancakeswap",
+          type: "addLiquidity",
+          amount: (aptAmount * 0.4).toFixed(2),
+          contractAddress: contracts.pancakeswap,
+          functionName: "::router::add_liquidity"
+        }
+      ];
+      
+    default:
+      return [
+        {
+          action: `Stake ${(aptAmount * 0.5).toFixed(2)} APT with Amnis`,
+          details: "Start with a safe staking option to generate yield on your APT",
+          protocol: "amnis",
+          type: "stake",
+          amount: (aptAmount * 0.5).toFixed(2),
+          contractAddress: contracts.amnis,
+          functionName: "::staking::stake"
+        }
+      ];
+  }
+}
+
+/**
+ * Find top protocols by APR
+ * @param {Object} protocols - Protocols data with APRs
+ * @param {number} count - Number of top protocols to return
+ * @returns {Array} Top protocols
+ */
+function findTopProtocols(protocols, count) {
+  const allProtocolsData = [];
+  
+  // Flatten protocol data
+  Object.entries(protocols).forEach(([protocol, products]) => {
+    Object.entries(products).forEach(([type, data]) => {
+      allProtocolsData.push({
+        protocol,
+        type,
+        apr: data.apr,
+        product: data.product
+      });
+    });
+  });
+  
+  // Sort by APR (descending) and get top count
+  return allProtocolsData
+    .sort((a, b) => b.apr - a.apr)
+    .slice(0, count);
+}
+
+/**
+ * Extract JSON from AI response text
+ * @param {string} response - AI response text
+ * @returns {Object|Array} Parsed JSON from response
+ */
+function extractJsonFromAIResponse(response) {
+  try {
+    // Try to find JSON in the response
+    const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) || response.match(/{[\s\S]*}/);
+    
+    if (jsonMatch) {
+      // Parse the JSON part
+      return JSON.parse(jsonMatch[1] || jsonMatch[0]);
+    }
+    
+    // If no JSON found, return empty array
+    return [];
+  } catch (error) {
+    console.error('Error extracting JSON from AI response:', error);
+    return [];
+  }
+}
+
+// --------------------------------
+// Protocol-specific rate fetchers
+// --------------------------------
+
+async function fetchAmnisStakingRate() {
+  try {
+    const response = await axios.get('https://api.amnis.finance/v1/statistics');
+    return {
+      staking: parseFloat(response.data.stakingApr) || 4.2,
+      lending: parseFloat(response.data.lendingApr) || 3.5
+    };
+  } catch (error) {
+    console.error('Error fetching Amnis rates:', error);
+    return { staking: 4.2, lending: 3.5 }; // Fallback rates
+  }
+}
+
+async function fetchThalaStakingRate() {
+  try {
+    const response = await axios.get('https://api.thala.fi/stats');
+    return {
+      staking: parseFloat(response.data.sthApt.apr) || 4.0,
+      lending: parseFloat(response.data.lending.apr) || 3.3
+    };
+  } catch (error) {
+    console.error('Error fetching Thala rates:', error);
+    return { staking: 4.0, lending: 3.3 }; // Fallback rates
+  }
+}
+
+async function fetchTortugaStakingRate() {
+  try {
+    const response = await axios.get('https://app.tortuga.finance/api/stats');
+    return { staking: parseFloat(response.data.tAptApr) || 3.8 };
+  } catch (error) {
+    console.error('Error fetching Tortuga rates:', error);
+    return { staking: 3.8 }; // Fallback rate
+  }
+}
+
+async function fetchDittoStakingRate() {
+  try {
+    const response = await axios.get('https://api.dittofinance.io/stats');
+    return { staking: parseFloat(response.data.dAptApr) || 3.9 };
+  } catch (error) {
+    console.error('Error fetching Ditto rates:', error);
+    return { staking: 3.9 }; // Fallback rate
+  }
+}
+
+async function fetchEchoLendingRate() {
+  try {
+    const response = await axios.get('https://api.echo.finance/markets');
+    return { lending: parseFloat(response.data.aptLendingApr) || 5.8 };
+  } catch (error) {
+    console.error('Error fetching Echo rates:', error);
+    return { lending: 5.8 }; // Fallback rate
+  }
+}
+
+async function fetchAriesLendingRate() {
+  try {
+    const response = await axios.get('https://api.aries.markets/markets');
+    return { lending: parseFloat(response.data.aptLendingApr) || 6.2 };
+  } catch (error) {
+    console.error('Error fetching Aries rates:', error);
+    return { lending: 6.2 }; // Fallback rate
+  }
+}
+
+async function fetchPancakeswapLiquidityRate() {
+  try {
+    const response = await axios.get('https://api.pancakeswap.finance/aptos/apr');
+    return { liquidity: parseFloat(response.data.aptUsdc) || 7.5 };
+  } catch (error) {
+    console.error('Error fetching PancakeSwap rates:', error);
+    return { liquidity: 7.5 }; // Fallback rate
+  }
+}
+
+async function fetchLiquidswapLiquidityRate() {
+  try {
+    const response = await axios.get('https://api.liquidswap.finance/pools');
+    return { liquidity: parseFloat(response.data.aptUsdc) || 7.0 };
+  } catch (error) {
+    console.error('Error fetching Liquidswap rates:', error);
+    return { liquidity: 7.0 }; // Fallback rate
+  }
+}
+
+async function fetchCetusLiquidityRate() {
+  try {
+    const response = await axios.get('https://api.cetus.zone/v1/pools');
+    return { liquidity: parseFloat(response.data.aptUsdc) || 6.8 };
+  } catch (error) {
+    console.error('Error fetching Cetus rates:', error);
+    return { liquidity: 6.8 }; // Fallback rate
+  }
+}
+
+module.exports = {
+  getStakingData,
+  getPersonalizedRecommendations,
+  determineRiskProfile,
+  calculatePotentialEarnings,
+  contracts,
+  riskProfiles,
+  strategies
+};

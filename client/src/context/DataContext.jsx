@@ -1,186 +1,176 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
-// Create the context
+// Create context
 export const DataContext = createContext(null);
 
 export const DataProvider = ({ children }) => {
-  // Market data
-  const [tokenData, setTokenData] = useState(null);
-  const [tokenLoading, setTokenLoading] = useState(false);
-  const [tokenError, setTokenError] = useState(null);
-  
-  // News data
-  const [newsData, setNewsData] = useState(null);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [newsError, setNewsError] = useState(null);
-  
-  // Staking data
+  const [isLoading, setIsLoading] = useState(true);
+  const [portfolioData, setPortfolioData] = useState(null);
   const [stakingData, setStakingData] = useState(null);
-  const [stakingLoading, setStakingLoading] = useState(false);
-  const [stakingError, setStakingError] = useState(null);
-  
-  // Refresh intervals in milliseconds
-  const MARKET_REFRESH_INTERVAL = 60000; // 1 minute
-  const NEWS_REFRESH_INTERVAL = 300000; // 5 minutes
-  const STAKING_REFRESH_INTERVAL = 600000; // 10 minutes
+  const [marketData, setMarketData] = useState(null);
+  const [newsData, setNewsData] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [error, setError] = useState(null);
+  const [recommendationHistory, setRecommendationHistory] = useState([]);
 
-  // Fetch token market data
-  const fetchTokenData = useCallback(async () => {
-    try {
-      setTokenLoading(true);
-      setTokenError(null);
-      
-      const response = await fetch('/api/tokens/latest');
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch token data: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setTokenData(data);
-    } catch (error) {
-      console.error('Error fetching token data:', error);
-      setTokenError(error.message || 'Failed to load token data');
-    } finally {
-      setTokenLoading(false);
-    }
+  // Initial data fetch
+  useEffect(() => {
+    fetchData();
+    
+    // Refresh data periodically (every 5 minutes)
+    const intervalId = setInterval(fetchData, 5 * 60 * 1000);
+    return () => clearInterval(intervalId);
   }, []);
 
-  // Fetch news data
-  const fetchNewsData = useCallback(async () => {
+  // Main data fetching function
+  const fetchData = async () => {
+    setIsLoading(true);
+    
     try {
-      setNewsLoading(true);
-      setNewsError(null);
+      // Mock data for demonstration
+      await Promise.all([
+        fetchPortfolioData(),
+        fetchStakingData(),
+        fetchMarketData(),
+        fetchNewsData()
+      ]);
       
-      const response = await fetch('/api/news/latest');
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch news data: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setNewsData(data);
-    } catch (error) {
-      console.error('Error fetching news data:', error);
-      setNewsError(error.message || 'Failed to load news data');
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError("Failed to load data. Please try again.");
     } finally {
-      setNewsLoading(false);
+      setIsLoading(false);
     }
-  }, []);
+  };
+
+  // Fetch portfolio data
+  const fetchPortfolioData = async (walletAddress) => {
+    // Mock implementation - in real app would fetch from API
+    const mockData = {
+      apt: { amount: "10.5", valueUSD: 105.0 },
+      stAPT: { amount: "5.2", valueUSD: 54.6 },
+      tAPT: { amount: "0", valueUSD: 0 },
+      totalValueUSD: 159.6
+    };
+    
+    setPortfolioData(mockData);
+    return mockData;
+  };
 
   // Fetch staking data
-  const fetchStakingData = useCallback(async () => {
-    try {
-      setStakingLoading(true);
-      setStakingError(null);
-      
-      const response = await fetch('/api/staking/latest');
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch staking data: ${response.statusText}`);
+  const fetchStakingData = async () => {
+    // Mock implementation
+    const mockData = {
+      protocols: {
+        amnis: { 
+          staking: { apr: "7.2", product: "stAPT" },
+          blendedStrategy: { apr: "7.6" }
+        },
+        thala: { 
+          staking: { apr: "7.5", product: "sthAPT" },
+          blendedStrategy: { apr: "7.9" }
+        },
+        tortuga: { 
+          staking: { apr: "7.0", product: "tAPT" },
+          blendedStrategy: { apr: "7.0" }
+        },
+        ditto: { 
+          staking: { apr: "7.8", product: "dAPT" },
+          blendedStrategy: { apr: "7.8" }
+        }
       }
-      
-      const data = await response.json();
-      setStakingData(data);
-    } catch (error) {
-      console.error('Error fetching staking data:', error);
-      setStakingError(error.message || 'Failed to load staking data');
-    } finally {
-      setStakingLoading(false);
-    }
-  }, []);
-
-  // Fetch all data at once
-  const fetchAllData = useCallback(() => {
-    fetchTokenData();
-    fetchNewsData();
-    fetchStakingData();
-  }, [fetchTokenData, fetchNewsData, fetchStakingData]);
-
-  // Setup periodic data fetching
-  useEffect(() => {
-    // Initial data fetch
-    fetchAllData();
-    
-    // Setup intervals
-    const tokenInterval = setInterval(fetchTokenData, MARKET_REFRESH_INTERVAL);
-    const newsInterval = setInterval(fetchNewsData, NEWS_REFRESH_INTERVAL);
-    const stakingInterval = setInterval(fetchStakingData, STAKING_REFRESH_INTERVAL);
-    
-    // Cleanup intervals
-    return () => {
-      clearInterval(tokenInterval);
-      clearInterval(newsInterval);
-      clearInterval(stakingInterval);
     };
-  }, [fetchAllData, fetchTokenData, fetchNewsData, fetchStakingData]);
-
-  // Format APR data for comparison chart
-  const getFormattedAPRData = useCallback(() => {
-    if (!stakingData || !stakingData.protocols) {
-      return [];
-    }
     
-    return Object.entries(stakingData.protocols).map(([name, protocol]) => {
-      let stakingAPR = 0;
-      let lendingAPR = 0;
-      let ammAPR = 0;
-      
-      if (protocol.staking && protocol.staking.apr) {
-        stakingAPR = protocol.staking.apr;
-      }
-      
-      if (protocol.lending && protocol.lending.apr) {
-        lendingAPR = protocol.lending.apr;
-      }
-      
-      if (protocol.amm && protocol.amm.apr) {
-        ammAPR = protocol.amm.apr;
-      }
-      
-      return {
-        name,
-        staking: stakingAPR,
-        lending: lendingAPR,
-        amm: ammAPR,
-        blended: protocol.blendedStrategy ? protocol.blendedStrategy.apr : 0
-      };
-    });
-  }, [stakingData]);
+    setStakingData(mockData);
+    return mockData;
+  };
 
-  // Get recommended strategies based on risk profile
-  const getRecommendedStrategies = useCallback((riskProfile = 'balanced') => {
-    if (!stakingData || !stakingData.strategies) {
-      return null;
-    }
+  // Fetch market data
+  const fetchMarketData = async () => {
+    // Mock implementation
+    const mockData = {
+      tokens: [
+        { symbol: "APT", price: 10.0, change24h: 2.5 },
+        { symbol: "stAPT", price: 10.5, change24h: 2.6 },
+        { symbol: "tAPT", price: 10.3, change24h: 2.4 }
+      ]
+    };
     
-    return stakingData.strategies[riskProfile] || stakingData.strategies.balanced;
-  }, [stakingData]);
+    setMarketData(mockData);
+    return mockData;
+  };
 
-  // Provider value
+  // Fetch news data
+  const fetchNewsData = async () => {
+    // Mock implementation
+    const mockData = [
+      { id: 1, title: "New Staking Protocol Launches on Aptos", date: "2025-03-20", url: "#" },
+      { id: 2, title: "Aptos DeFi TVL Reaches New ATH", date: "2025-03-25", url: "#" }
+    ];
+    
+    setNewsData(mockData);
+    return mockData;
+  };
+
+  // Load recommendation history
+  const loadRecommendationHistory = async () => {
+    // Mock implementation
+    const history = [
+      {
+        title: "Balanced Yield Strategy",
+        timestamp: new Date(Date.now() - 86400000).toISOString(),
+        totalApr: "7.8",
+        allocation: [
+          { protocol: "Amnis", product: "Liquid Staking", percentage: 40 },
+          { protocol: "Thala", product: "Liquid Staking", percentage: 30 },
+          { protocol: "PancakeSwap", product: "AMM Liquidity", percentage: 20 },
+          { protocol: "Ditto", product: "Liquid Staking", percentage: 10 }
+        ]
+      },
+      {
+        title: "Conservative Staking",
+        timestamp: new Date(Date.now() - 7 * 86400000).toISOString(),
+        totalApr: "7.3",
+        allocation: [
+          { protocol: "Amnis", product: "Liquid Staking", percentage: 50 },
+          { protocol: "Thala", product: "Liquid Staking", percentage: 50 }
+        ]
+      }
+    ];
+    
+    setRecommendationHistory(history);
+    return history;
+  };
+
+  // Save a recommendation to history
+  const saveRecommendation = (recommendation) => {
+    if (!recommendation) return;
+    
+    const updatedRecommendation = {
+      ...recommendation,
+      timestamp: new Date().toISOString()
+    };
+    
+    setRecommendationHistory(prev => [updatedRecommendation, ...prev]);
+    return updatedRecommendation;
+  };
+
+  // Context value
   const value = {
-    // Token data
-    tokenData,
-    tokenLoading,
-    tokenError,
-    fetchTokenData,
-    
-    // News data
-    newsData,
-    newsLoading,
-    newsError,
-    fetchNewsData,
-    
-    // Staking data
+    isLoading,
+    portfolioData,
     stakingData,
-    stakingLoading,
-    stakingError,
-    fetchStakingData,
-    
-    // Helper functions
-    fetchAllData,
-    getFormattedAPRData,
-    getRecommendedStrategies
+    marketData,
+    newsData,
+    lastUpdated,
+    error,
+    recommendationHistory,
+    refreshData: fetchData,
+    fetchPortfolioData,
+    loadRecommendationHistory,
+    saveRecommendation
   };
 
   return (
@@ -190,11 +180,13 @@ export const DataProvider = ({ children }) => {
   );
 };
 
-// Custom hook to use the data context
+// Custom hook for using the data context
 export const useData = () => {
-  const context = React.useContext(DataContext);
-  if (context === null) {
+  const context = useContext(DataContext);
+  if (!context) {
     throw new Error('useData must be used within a DataProvider');
   }
   return context;
 };
+
+export default DataContext;

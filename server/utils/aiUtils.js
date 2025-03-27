@@ -1,7 +1,7 @@
 // aiUtils.js
 // Utilities for AI model interactions, prompt engineering, and recommendation generation
 
-const { Anthropic } = require('anthropic');
+const { Anthropic } = require('@anthropic-ai/sdk');
 const { OpenAI } = require('openai');
 const axios = require('axios');
 const { performance } = require('perf_hooks');

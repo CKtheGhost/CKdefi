@@ -1,15 +1,11 @@
-/**
- * portfolio_tracker.js - Wallet portfolio tracking and analysis module for CompounDefi
- * 
- * This module fetches and analyzes wallet portfolio data from the Aptos blockchain,
- * including native APT, staked tokens, and liquidity positions.
- */
+// portfolio_tracker.js
+// Core module for tracking and analyzing user portfolios on Aptos
 
-const axios = require('axios');
 const { Aptos, AptosConfig, Network } = require('@aptos-labs/ts-sdk');
-const marketDataUtils = require('../utils/marketDataUtils');
+const axios = require('axios');
+const { fetchAptosTokenPrice } = require('../utils/marketDataUtils');
 
-// Initialize Aptos client with fallback RPC endpoints
+// Initialize Aptos clients for different networks
 const APTOS_RPC_ENDPOINTS = {
   MAINNET: [
     "https://fullnode.mainnet.aptoslabs.com/v1",
@@ -24,328 +20,303 @@ const APTOS_RPC_ENDPOINTS = {
   ]
 };
 
-// LiquidStaking token addresses
-const LIQUID_STAKING_TOKENS = {
-  stAPT: '0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a::staking::StakedAptos',
-  sthAPT: '0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6::stake::StakedAptos',
-  tAPT: '0x952c1b1fc8eb75ee80f432c9d0a84fcda1d5c7481501a7eca9199f1596a60b53::stapt_token::StakedApt',
-  dAPT: '0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5::ditto::DittoAPT'
+// Known token addresses for liquid staking derivatives
+const KNOWN_TOKENS = {
+  // Liquid staking tokens
+  "0x1::aptos_coin::AptosCoin": { symbol: "APT", name: "Aptos Coin", decimals: 8 },
+  "0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a::stapt_token::StakedApt": { symbol: "stAPT", name: "Amnis Staked APT", decimals: 8 },
+  "0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6::stake_token::StakedAptos": { symbol: "sthAPT", name: "Thala Staked APT", decimals: 8 },
+  "0x952c1b1fc8eb75ee80f432c9d0a84fcda1d5c7481501a7eca9199f1596a60b53::staked_apt_coin::StakedAptCoin": { symbol: "tAPT", name: "Tortuga Staked APT", decimals: 8 },
+  "0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5::ditto_staked_apt::DittoStakedApt": { symbol: "dAPT", name: "Ditto Staked APT", decimals: 8 }
 };
-
-// AMM Protocol addresses
-const AMM_PROTOCOLS = {
-  liquidswap: '0x190d44266241744264b964a37b8f09863167a12d3e70cda39376cfb4e3561e12',
-  pancakeswap: '0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa',
-  cetus: '0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6'
-};
-
-let aptosClient = null;
-
-// Initialize Aptos client with the best available endpoint
-async function initializeAptosClient() {
-  if (aptosClient) return aptosClient;
-  
-  const network = process.env.APTOS_NETWORK === 'TESTNET' ? Network.TESTNET : Network.MAINNET;
-  const endpoints = network === Network.TESTNET ? APTOS_RPC_ENDPOINTS.TESTNET : APTOS_RPC_ENDPOINTS.MAINNET;
-  
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`Trying RPC endpoint: ${endpoint}`);
-      const response = await axios.get(`${endpoint}/info`, { 
-        timeout: 5000
-      });
-      
-      if (response.status === 200) {
-        console.log(`Successfully connected to RPC endpoint: ${endpoint}`);
-        
-        const config = new AptosConfig({ 
-          network,
-          clientConfig: {
-            FULLNODE_URL: endpoint,
-            INDEXER_URL: network === Network.TESTNET 
-              ? "https://indexer.testnet.aptoslabs.com/v1/graphql"
-              : "https://indexer.mainnet.aptoslabs.com/v1/graphql"
-          }
-        });
-        
-        aptosClient = new Aptos(config);
-        return aptosClient;
-      }
-    } catch (error) {
-      console.error(`Failed to connect to RPC endpoint ${endpoint}:`, error.message);
-    }
-  }
-  
-  console.warn(`All RPC endpoints failed, defaulting to first one: ${endpoints[0]}`);
-  const config = new AptosConfig({ 
-    network,
-    clientConfig: {
-      FULLNODE_URL: endpoints[0]
-    }
-  });
-  
-  aptosClient = new Aptos(config);
-  return aptosClient;
-}
 
 /**
- * Get wallet portfolio data including APT balance, staked tokens, and liquidity positions
- * @param {String} walletAddress - Wallet address to analyze
- * @returns {Promise<Object>} Portfolio data
+ * Get portfolio data for a specific wallet address
+ * @param {string} walletAddress - The wallet address to fetch data for
+ * @param {Object} options - Options for fetching portfolio data
+ * @returns {Promise<Object>} Complete portfolio data
  */
-async function getPortfolioData(walletAddress) {
+async function getPortfolioData(walletAddress, options = {}) {
   try {
-    // Validate wallet address format
+    console.log(`Fetching portfolio data for ${walletAddress}`);
+    
     if (!walletAddress.startsWith('0x') || walletAddress.length !== 66) {
       throw new Error('Invalid wallet address format');
     }
     
     // Initialize Aptos client
-    const aptos = await initializeAptosClient();
+    const aptosClient = await getAptosClient();
     
-    // Fetch APT price from market data
-    const aptPrice = await marketDataUtils.getTokenPrice('aptos');
+    // Get APT price for valuation
+    const aptPrice = await fetchAptosTokenPrice();
     
-    // Fetch account resources in parallel
-    const [accountResources, accountTransactions] = await Promise.all([
-      aptos.getAccountResources(walletAddress),
-      fetchRecentTransactions(walletAddress)
+    // Get wallet balances
+    const [
+      coinBalances,
+      stakedPositions,
+      liquidityPositions,
+      recentTransactions
+    ] = await Promise.all([
+      getWalletCoinBalances(aptosClient, walletAddress),
+      getStakedPositions(aptosClient, walletAddress),
+      getLiquidityPositions(aptosClient, walletAddress),
+      getRecentTransactions(aptosClient, walletAddress, options.txLimit || 20)
     ]);
     
-    // Extract APT balance
-    const coinStore = accountResources.find(
-      (r) => r.type === '0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>'
+    // Format portfolio data
+    const portfolio = formatPortfolioData(
+      walletAddress,
+      coinBalances,
+      stakedPositions,
+      liquidityPositions,
+      aptPrice
     );
     
-    const aptBalance = coinStore ? parseInt(coinStore.data.coin.value) / 100000000 : 0;
-    const aptValueUSD = aptBalance * aptPrice;
+    // Include historical performance data if requested
+    if (options.includeHistorical) {
+      portfolio.historicalData = await getHistoricalPerformance(walletAddress);
+    }
     
-    // Extract staked tokens balances
-    const stakedTokensData = extractStakedTokensData(accountResources, aptPrice);
+    // Add recent transactions
+    portfolio.recentTransactions = recentTransactions;
     
-    // Check for AMM liquidity positions
-    const ammLiquidityData = await checkAmmLiquidity(walletAddress, aptos, aptPrice);
-    
-    // Calculate total portfolio value
-    const totalValueUSD = 
-      aptValueUSD + 
-      (stakedTokensData.stAPT?.valueUSD || 0) + 
-      (stakedTokensData.sthAPT?.valueUSD || 0) + 
-      (stakedTokensData.tAPT?.valueUSD || 0) + 
-      (stakedTokensData.dAPT?.valueUSD || 0) + 
-      (ammLiquidityData.hasLiquidity ? ammLiquidityData.valueUSD : 0);
-    
-    // Calculate total APT value (including staked)
-    const totalAptos = 
-      aptBalance + 
-      parseFloat(stakedTokensData.stAPT?.amount || 0) + 
-      parseFloat(stakedTokensData.sthAPT?.amount || 0) + 
-      parseFloat(stakedTokensData.tAPT?.amount || 0) + 
-      parseFloat(stakedTokensData.dAPT?.amount || 0);
-    
-    // Format and return portfolio data
     return {
       wallet: walletAddress,
-      portfolio: {
-        apt: {
-          amount: aptBalance.toFixed(6),
-          valueUSD: aptValueUSD.toFixed(2)
-        },
-        ...stakedTokensData,
-        ammLiquidity: ammLiquidityData,
-        totalValueUSD: totalValueUSD.toFixed(2),
-        totalAptos: totalAptos.toFixed(6),
-        recentTransactions: accountTransactions,
-        lastUpdated: new Date().toISOString()
-      }
+      portfolio,
+      lastUpdated: new Date().toISOString()
     };
   } catch (error) {
-    console.error('Error fetching portfolio data:', error);
-    throw new Error(`Failed to fetch portfolio data: ${error.message}`);
+    console.error(`Error fetching portfolio data for ${walletAddress}:`, error);
+    throw error;
   }
 }
 
 /**
- * Extract staked tokens data from account resources
- * @param {Array} accountResources - Account resources
- * @param {Number} aptPrice - Current APT price
- * @returns {Object} Staked tokens data
+ * Initialize and get an Aptos client
+ * @returns {Promise<Aptos>} Initialized Aptos client
  */
-function extractStakedTokensData(accountResources, aptPrice) {
-  const result = {};
-  
-  // Check for stAPT (Amnis)
-  const stAPTResource = accountResources.find(
-    (r) => r.type === `0x1::coin::CoinStore<${LIQUID_STAKING_TOKENS.stAPT}>`
-  );
-  
-  if (stAPTResource && parseInt(stAPTResource.data.coin.value) > 0) {
-    const stAPTAmount = parseInt(stAPTResource.data.coin.value) / 100000000;
-    result.stAPT = {
-      amount: stAPTAmount.toFixed(6),
-      valueUSD: (stAPTAmount * aptPrice).toFixed(2),
-      protocol: 'amnis'
-    };
-  }
-  
-  // Check for sthAPT (Thala)
-  const sthAPTResource = accountResources.find(
-    (r) => r.type === `0x1::coin::CoinStore<${LIQUID_STAKING_TOKENS.sthAPT}>`
-  );
-  
-  if (sthAPTResource && parseInt(sthAPTResource.data.coin.value) > 0) {
-    const sthAPTAmount = parseInt(sthAPTResource.data.coin.value) / 100000000;
-    result.sthAPT = {
-      amount: sthAPTAmount.toFixed(6),
-      valueUSD: (sthAPTAmount * aptPrice).toFixed(2),
-      protocol: 'thala'
-    };
-  }
-  
-  // Check for tAPT (Tortuga)
-  const tAPTResource = accountResources.find(
-    (r) => r.type === `0x1::coin::CoinStore<${LIQUID_STAKING_TOKENS.tAPT}>`
-  );
-  
-  if (tAPTResource && parseInt(tAPTResource.data.coin.value) > 0) {
-    const tAPTAmount = parseInt(tAPTResource.data.coin.value) / 100000000;
-    result.tAPT = {
-      amount: tAPTAmount.toFixed(6),
-      valueUSD: (tAPTAmount * aptPrice).toFixed(2),
-      protocol: 'tortuga'
-    };
-  }
-  
-  // Check for dAPT (Ditto)
-  const dAPTResource = accountResources.find(
-    (r) => r.type === `0x1::coin::CoinStore<${LIQUID_STAKING_TOKENS.dAPT}>`
-  );
-  
-  if (dAPTResource && parseInt(dAPTResource.data.coin.value) > 0) {
-    const dAPTAmount = parseInt(dAPTResource.data.coin.value) / 100000000;
-    result.dAPT = {
-      amount: dAPTAmount.toFixed(6),
-      valueUSD: (dAPTAmount * aptPrice).toFixed(2),
-      protocol: 'ditto'
-    };
-  }
-  
-  return result;
-}
-
-/**
- * Check for AMM liquidity positions
- * @param {String} walletAddress - Wallet address to check
- * @param {Object} aptos - Aptos client instance
- * @param {Number} aptPrice - Current APT price
- * @returns {Promise<Object>} Liquidity positions data
- */
-async function checkAmmLiquidity(walletAddress, aptos, aptPrice) {
+async function getAptosClient() {
   try {
-    // Initialize result
-    const result = {
-      hasLiquidity: false,
-      positions: [],
-      valueUSD: 0
-    };
+    const network = process.env.APTOS_NETWORK === 'TESTNET' ? Network.TESTNET : Network.MAINNET;
+    const endpoints = network === Network.TESTNET ? APTOS_RPC_ENDPOINTS.TESTNET : APTOS_RPC_ENDPOINTS.MAINNET;
     
-    // Check for LP tokens and positions in supported protocols
-    let totalLiquidityValue = 0;
-    
-    // Check PancakeSwap positions
-    try {
-      const pancakePositions = await axios.get(`https://api.pancakeswap.finance/v1/aptos/positions/${walletAddress}`);
-      
-      if (pancakePositions.data?.positions?.length > 0) {
-        result.hasLiquidity = true;
+    // Try endpoints until one works
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Trying RPC endpoint: ${endpoint}`);
         
-        pancakePositions.data.positions.forEach(position => {
-          const positionValue = parseFloat(position.valueUSD || 0);
-          totalLiquidityValue += positionValue;
-          
-          result.positions.push({
-            protocol: 'pancakeswap',
-            valueUSD: positionValue.toFixed(2),
-            pool: position.pool?.name || 'Unknown Pool',
-            valueInApt: (positionValue / aptPrice).toFixed(6)
-          });
+        const aptosConfig = new AptosConfig({ 
+          network,
+          clientConfig: { FULLNODE_URL: endpoint },
+          timeout: 10000
         });
-      }
-    } catch (error) {
-      console.log('Error checking PancakeSwap positions:', error.message);
-    }
-    
-    // Check Liquidswap positions (simplified)
-    try {
-      const liquidswapPositions = await axios.get(`https://api.liquidswap.com/v1/pools/positions/${walletAddress}`);
-      
-      if (liquidswapPositions.data?.positions?.length > 0) {
-        result.hasLiquidity = true;
         
-        liquidswapPositions.data.positions.forEach(position => {
-          const positionValue = parseFloat(position.value || 0);
-          totalLiquidityValue += positionValue;
-          
-          result.positions.push({
-            protocol: 'liquidswap',
-            valueUSD: positionValue.toFixed(2),
-            pool: position.poolName || 'Unknown Pool',
-            valueInApt: (positionValue / aptPrice).toFixed(6)
-          });
-        });
-      }
-    } catch (error) {
-      console.log('Error checking Liquidswap positions:', error.message);
-    }
-    
-    // If we couldn't get specific positions but user has LP tokens, provide an estimate
-    if (!result.hasLiquidity) {
-      // Search for LP token types in resources
-      const resources = await aptos.getAccountResources(walletAddress);
-      const lpTokens = resources.filter(r => 
-        r.type.includes('LiquidityToken') || 
-        r.type.includes('LpToken') || 
-        r.type.includes('PancakeLP')
-      );
-      
-      if (lpTokens.length > 0) {
-        result.hasLiquidity = true;
-        result.estimatedCount = lpTokens.length;
+        const aptos = new Aptos(aptosConfig);
         
-        // Rough estimate of value (very approximate)
-        totalLiquidityValue = lpTokens.length * 100; // $100 per position rough estimate
-        result.estimationMethod = 'token_count';
+        // Test the connection
+        await aptos.getLedgerInfo();
+        console.log(`Successfully connected to RPC endpoint: ${endpoint}`);
+        return aptos;
+      } catch (error) {
+        console.warn(`Failed to connect to RPC endpoint ${endpoint}:`, error.message);
       }
     }
     
-    // Update total value
-    result.valueUSD = totalLiquidityValue;
-    result.estimatedValueUSD = totalLiquidityValue;
-    
-    return result;
+    throw new Error('All RPC endpoints failed');
   } catch (error) {
-    console.error('Error checking AMM liquidity:', error);
-    return { hasLiquidity: false, valueUSD: 0 };
+    console.error('Failed to initialize Aptos client:', error);
+    
+    // Fallback to default config
+    const network = process.env.APTOS_NETWORK === 'TESTNET' ? Network.TESTNET : Network.MAINNET;
+    const aptosConfig = new AptosConfig({ network });
+    return new Aptos(aptosConfig);
   }
 }
 
 /**
- * Fetch recent transactions for a wallet
- * @param {String} walletAddress - Wallet address
- * @returns {Promise<Array>} Recent transactions
+ * Get wallet coin balances
+ * @param {Aptos} aptosClient - Initialized Aptos client
+ * @param {string} walletAddress - Wallet address
+ * @returns {Promise<Array>} Wallet coin balances
  */
-async function fetchRecentTransactions(walletAddress) {
+async function getWalletCoinBalances(aptosClient, walletAddress) {
   try {
-    const response = await axios.get(
-      `https://fullnode.mainnet.aptoslabs.com/v1/accounts/${walletAddress}/transactions?limit=10`
+    const response = await aptosClient.getAccountCoinsData({ accountAddress: walletAddress });
+    return response.current_coin_balances || [];
+  } catch (error) {
+    console.error('Error fetching wallet coin balances:', error);
+    return [];
+  }
+}
+
+/**
+ * Get staked positions from wallet resources
+ * @param {Aptos} aptosClient - Initialized Aptos client
+ * @param {string} walletAddress - Wallet address
+ * @returns {Promise<Object>} Staked positions
+ */
+async function getStakedPositions(aptosClient, walletAddress) {
+  try {
+    const resources = await aptosClient.getAccountResources({
+      accountAddress: walletAddress
+    });
+    
+    const stakedPositions = {
+      stAPT: { amount: 0 }, // Amnis
+      sthAPT: { amount: 0 }, // Thala
+      tAPT: { amount: 0 },   // Tortuga
+      dAPT: { amount: 0 }    // Ditto
+    };
+    
+    // Look for staked token resources
+    for (const resource of resources) {
+      // Amnis stAPT
+      if (resource.type.includes('0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a::stapt_token::StakedApt')) {
+        stakedPositions.stAPT.amount = parseFloat(resource.data.coin?.value || 0) / 1e8;
+      }
+      // Thala sthAPT
+      else if (resource.type.includes('0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6::stake_token::StakedAptos')) {
+        stakedPositions.sthAPT.amount = parseFloat(resource.data.value || 0) / 1e8;
+      }
+      // Tortuga tAPT
+      else if (resource.type.includes('0x952c1b1fc8eb75ee80f432c9d0a84fcda1d5c7481501a7eca9199f1596a60b53::staked_apt_coin::StakedAptCoin')) {
+        stakedPositions.tAPT.amount = parseFloat(resource.data.value || 0) / 1e8;
+      }
+      // Ditto dAPT
+      else if (resource.type.includes('0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5::ditto_staked_apt::DittoStakedApt')) {
+        stakedPositions.dAPT.amount = parseFloat(resource.data.value || 0) / 1e8;
+      }
+    }
+    
+    return stakedPositions;
+  } catch (error) {
+    console.error('Error fetching staked positions:', error);
+    return {
+      stAPT: { amount: 0 },
+      sthAPT: { amount: 0 },
+      tAPT: { amount: 0 },
+      dAPT: { amount: 0 }
+    };
+  }
+}
+
+/**
+ * Get liquidity positions in AMMs
+ * @param {Aptos} aptosClient - Initialized Aptos client
+ * @param {string} walletAddress - Wallet address
+ * @returns {Promise<Object>} Liquidity positions
+ */
+async function getLiquidityPositions(aptosClient, walletAddress) {
+  try {
+    const resources = await aptosClient.getAccountResources({
+      accountAddress: walletAddress
+    });
+    
+    let hasLiquidity = false;
+    let estimatedValueUSD = 0;
+    const positions = [];
+    
+    // Check for PancakeSwap LP tokens
+    const pancakePositions = resources.filter(r => 
+      r.type.includes('0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa::router::LiquidityPosition')
     );
     
-    return response.data.map(tx => ({
+    if (pancakePositions.length > 0) {
+      hasLiquidity = true;
+      
+      for (const position of pancakePositions) {
+        if (position.data.balance && parseFloat(position.data.balance) > 0) {
+          positions.push({
+            protocol: 'pancakeswap',
+            poolType: position.data.pool_type || 'Unknown',
+            balance: parseFloat(position.data.balance) / 1e8,
+            valueUSD: parseFloat(position.data.usd_value || 0)
+          });
+          estimatedValueUSD += parseFloat(position.data.usd_value || 0);
+        }
+      }
+    }
+    
+    // Check for Liquidswap LP tokens
+    const liquidswapPositions = resources.filter(r => 
+      r.type.includes('0x190d44266241744264b964a37b8f09863167a12d3e70cda39376cfb4e3561e12::lp_account::LpBalance')
+    );
+    
+    if (liquidswapPositions.length > 0) {
+      hasLiquidity = true;
+      
+      for (const position of liquidswapPositions) {
+        if (position.data.balance && parseFloat(position.data.balance) > 0) {
+          positions.push({
+            protocol: 'liquidswap',
+            poolType: position.data.pool_type || 'Unknown',
+            balance: parseFloat(position.data.balance) / 1e8,
+            valueUSD: parseFloat(position.data.usd_value || 0)
+          });
+          estimatedValueUSD += parseFloat(position.data.usd_value || 0);
+        }
+      }
+    }
+    
+    // Check for Cetus LP tokens
+    const cetusPositions = resources.filter(r => 
+      r.type.includes('0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6::pool::LpToken')
+    );
+    
+    if (cetusPositions.length > 0) {
+      hasLiquidity = true;
+      
+      for (const position of cetusPositions) {
+        if (position.data.value && parseFloat(position.data.value) > 0) {
+          positions.push({
+            protocol: 'cetus',
+            poolType: 'Standard',
+            balance: parseFloat(position.data.value) / 1e8,
+            valueUSD: parseFloat(position.data.usd_value || 0)
+          });
+          estimatedValueUSD += parseFloat(position.data.usd_value || 0);
+        }
+      }
+    }
+    
+    return {
+      hasLiquidity,
+      estimatedValueUSD,
+      positions
+    };
+  } catch (error) {
+    console.error('Error fetching liquidity positions:', error);
+    return {
+      hasLiquidity: false,
+      estimatedValueUSD: 0,
+      positions: []
+    };
+  }
+}
+
+/**
+ * Get recent transactions for the wallet
+ * @param {Aptos} aptosClient - Initialized Aptos client
+ * @param {string} walletAddress - Wallet address
+ * @param {number} limit - Maximum number of transactions to return
+ * @returns {Promise<Array>} Recent transactions
+ */
+async function getRecentTransactions(aptosClient, walletAddress, limit = 20) {
+  try {
+    const transactions = await aptosClient.getAccountTransactions({
+      accountAddress: walletAddress,
+      limit
+    });
+    
+    return transactions.map(tx => ({
+      version: tx.version,
       hash: tx.hash,
-      type: determineTransactionType(tx),
+      type: tx.type,
       timestamp: tx.timestamp,
       success: tx.success,
-      gasUsed: tx.gas_used
+      vmStatus: tx.vm_status,
+      gasUsed: tx.gas_used,
+      gasUnitPrice: tx.gas_unit_price
     }));
   } catch (error) {
     console.error('Error fetching recent transactions:', error);
@@ -354,118 +325,228 @@ async function fetchRecentTransactions(walletAddress) {
 }
 
 /**
- * Determine transaction type from transaction data
- * @param {Object} tx - Transaction data
- * @returns {String} Transaction type
+ * Get historical performance data for the wallet
+ * @param {string} walletAddress - Wallet address
+ * @returns {Promise<Array>} Historical performance data
  */
-function determineTransactionType(tx) {
+async function getHistoricalPerformance(walletAddress) {
   try {
-    if (!tx.payload) return 'unknown';
-    
-    const functionName = tx.payload.function;
-    
-    if (functionName.includes('::staking::')) {
-      return functionName.includes('::stake') ? 'stake' : 'unstake';
-    } else if (functionName.includes('::lending::') || functionName.includes('::pool::')) {
-      return functionName.includes('::supply') || functionName.includes('::deposit') 
-        ? 'lend' 
-        : 'withdraw';
-    } else if (functionName.includes('::router::') || functionName.includes('::swap::')) {
-      if (functionName.includes('::add_liquidity')) {
-        return 'addLiquidity';
-      } else if (functionName.includes('::remove_liquidity')) {
-        return 'removeLiquidity';
-      } else if (functionName.includes('::swap')) {
-        return 'swap';
-      }
-    } else if (functionName.includes('0x1::coin::transfer')) {
-      return 'transfer';
-    }
-    
-    return 'other';
-  } catch (error) {
-    return 'unknown';
-  }
-}
-
-/**
- * Analyze portfolio performance
- * @param {String} walletAddress - Wallet address
- * @param {Object} portfolioData - Current portfolio data
- * @returns {Promise<Object>} Performance analysis
- */
-async function analyzePortfolioPerformance(walletAddress, portfolioData) {
-  try {
-    // Get historical APT price data
-    const historicalPrices = await marketDataUtils.getHistoricalPrices('aptos', 30); // 30 days
-    
-    // Calculate estimated portfolio value over time
-    const totalAptos = parseFloat(portfolioData.totalAptos || 0);
+    // This would typically fetch historical wallet value data from a database
+    // For now, we'll return dummy data
     const historicalData = [];
+    const now = new Date();
+    const aptPrice = await fetchAptosTokenPrice();
     
-    historicalPrices.forEach(pricePoint => {
+    // Generate 30 days of historical data
+    for (let i = 30; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(now.getDate() - i);
+      
+      // Add some random variance
+      const variance = 0.9 + (Math.random() * 0.2); // 0.9 to 1.1
+      const historicalAptPrice = aptPrice * (1 - (i * 0.005)) * variance;
+      
       historicalData.push({
-        date: pricePoint.date,
-        value: (totalAptos * pricePoint.price).toFixed(2),
-        price: pricePoint.price
+        date: date.toISOString(),
+        value: (1000 * historicalAptPrice).toFixed(2) // Assuming constant APT amount
       });
-    });
-    
-    // Calculate basic performance metrics
-    const startValue = parseFloat(historicalData[0]?.value || 0);
-    const endValue = parseFloat(historicalData[historicalData.length - 1]?.value || 0);
-    const absoluteChange = endValue - startValue;
-    const percentageChange = startValue > 0 ? (absoluteChange / startValue) * 100 : 0;
-    
-    // Calculate volatility
-    const returns = [];
-    for (let i = 1; i < historicalData.length; i++) {
-      const prevValue = parseFloat(historicalData[i-1].value);
-      const currentValue = parseFloat(historicalData[i].value);
-      if (prevValue > 0) {
-        returns.push((currentValue - prevValue) / prevValue);
-      }
     }
     
-    const volatility = calculateVolatility(returns) * 100;
-    
-    return {
-      historicalData,
-      performance: {
-        startValue: startValue.toFixed(2),
-        endValue: endValue.toFixed(2),
-        absoluteChange: absoluteChange.toFixed(2),
-        percentageChange: percentageChange.toFixed(2),
-        period: '30 days',
-        volatility: volatility.toFixed(2)
-      },
-      lastUpdated: new Date().toISOString()
-    };
+    return historicalData;
   } catch (error) {
-    console.error('Error analyzing portfolio performance:', error);
-    return {
-      error: `Failed to analyze portfolio performance: ${error.message}`,
-      lastUpdated: new Date().toISOString()
-    };
+    console.error('Error fetching historical performance:', error);
+    return [];
   }
 }
 
 /**
- * Calculate volatility (standard deviation of returns)
- * @param {Array} returns - Array of daily returns
- * @returns {Number} Volatility
+ * Format portfolio data into a standardized structure
+ * @param {string} walletAddress - Wallet address
+ * @param {Array} coinBalances - Coin balances from the wallet
+ * @param {Object} stakedPositions - Staked token positions
+ * @param {Object} liquidityPositions - Liquidity positions in AMMs
+ * @param {number} aptPrice - Current APT price in USD
+ * @returns {Object} Formatted portfolio data
  */
-function calculateVolatility(returns) {
-  if (returns.length === 0) return 0;
-  
-  const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-  const squareDiffs = returns.map(r => Math.pow(r - mean, 2));
-  const variance = squareDiffs.reduce((sum, d) => sum + d, 0) / returns.length;
-  
-  return Math.sqrt(variance);
+function formatPortfolioData(walletAddress, coinBalances, stakedPositions, liquidityPositions, aptPrice) {
+  try {
+    // Initialize portfolio
+    const portfolio = {
+      address: walletAddress,
+      totalAptos: 0,
+      totalValueUSD: 0,
+      apt: { amount: 0, valueUSD: 0 },
+      stAPT: { amount: 0, valueUSD: 0 },
+      sthAPT: { amount: 0, valueUSD: 0 },
+      tAPT: { amount: 0, valueUSD: 0 },
+      dAPT: { amount: 0, valueUSD: 0 },
+      ammLiquidity: liquidityPositions,
+      otherTokens: []
+    };
+    
+    // Process coin balances
+    for (const coin of coinBalances) {
+      const tokenInfo = KNOWN_TOKENS[coin.coin_type] || {
+        symbol: getSymbolFromType(coin.coin_type),
+        name: getNameFromType(coin.coin_type),
+        decimals: 8
+      };
+      
+      const amount = parseFloat(coin.amount) / Math.pow(10, tokenInfo.decimals);
+      
+      if (tokenInfo.symbol === 'APT') {
+        portfolio.apt = {
+          amount: amount.toFixed(6),
+          valueUSD: (amount * aptPrice).toFixed(2)
+        };
+        portfolio.totalAptos += amount;
+        portfolio.totalValueUSD += amount * aptPrice;
+      } else {
+        // Handle other tokens
+        const valueUSD = tokenInfo.symbol.includes('APT') ? 
+          amount * aptPrice : 0; // For now, non-APT tokens have zero value
+        
+        portfolio.otherTokens.push({
+          symbol: tokenInfo.symbol,
+          name: tokenInfo.name,
+          amount: amount.toFixed(6),
+          valueUSD: valueUSD.toFixed(2)
+        });
+        
+        if (valueUSD > 0) {
+          portfolio.totalValueUSD += valueUSD;
+        }
+      }
+    }
+    
+    // Process staked positions
+    for (const [token, position] of Object.entries(stakedPositions)) {
+      if (position.amount > 0) {
+        const valueUSD = position.amount * aptPrice;
+        portfolio[token] = {
+          amount: position.amount.toFixed(6),
+          valueUSD: valueUSD.toFixed(2)
+        };
+        portfolio.totalAptos += position.amount;
+        portfolio.totalValueUSD += valueUSD;
+      }
+    }
+    
+    // Add liquidity position value
+    if (liquidityPositions.hasLiquidity) {
+      portfolio.totalValueUSD += liquidityPositions.estimatedValueUSD;
+    }
+    
+    // Format total USD value
+    portfolio.totalValueUSD = parseFloat(portfolio.totalValueUSD).toFixed(2);
+    
+    return portfolio;
+  } catch (error) {
+    console.error('Error formatting portfolio data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Extract symbol from token type string
+ * @param {string} tokenType - Token type string
+ * @returns {string} Token symbol
+ */
+function getSymbolFromType(tokenType) {
+  // Extract the last part of the type string
+  const parts = tokenType.split('::');
+  if (parts.length === 3) {
+    return parts[2];
+  }
+  return 'Unknown';
+}
+
+/**
+ * Extract name from token type string
+ * @param {string} tokenType - Token type string
+ * @returns {string} Token name
+ */
+function getNameFromType(tokenType) {
+  // Extract the last part of the type string and format it
+  const parts = tokenType.split('::');
+  if (parts.length === 3) {
+    return parts[2].replace(/([A-Z])/g, ' $1').trim();
+  }
+  return 'Unknown Token';
+}
+
+/**
+ * Calculate portfolio risk metrics
+ * @param {Object} portfolio - Portfolio data
+ * @returns {Object} Risk metrics
+ */
+function calculateRiskMetrics(portfolio) {
+  try {
+    const totalValue = parseFloat(portfolio.totalValueUSD);
+    if (totalValue <= 0) return { riskScore: 0, stakeRatio: 0, liquidityRatio: 0 };
+    
+    // Calculate staked ratio
+    const stakedValue = parseFloat(portfolio.stAPT?.valueUSD || 0) +
+                        parseFloat(portfolio.sthAPT?.valueUSD || 0) +
+                        parseFloat(portfolio.tAPT?.valueUSD || 0) +
+                        parseFloat(portfolio.dAPT?.valueUSD || 0);
+    
+    const stakeRatio = stakedValue / totalValue;
+    
+    // Calculate liquidity ratio
+    const liquidityValue = portfolio.ammLiquidity?.estimatedValueUSD || 0;
+    const liquidityRatio = liquidityValue / totalValue;
+    
+    // Calculate risk score - higher liquidity exposure means higher risk
+    const riskScore = Math.min(10, Math.round((liquidityRatio * 10) + (1 - stakeRatio) * 5));
+    
+    return {
+      riskScore,
+      stakeRatio,
+      liquidityRatio
+    };
+  } catch (error) {
+    console.error('Error calculating risk metrics:', error);
+    return { riskScore: 0, stakeRatio: 0, liquidityRatio: 0 };
+  }
+}
+
+/**
+ * Calculate portfolio performance metrics
+ * @param {Object} portfolio - Portfolio data
+ * @param {Array} historicalData - Historical performance data
+ * @returns {Object} Performance metrics
+ */
+function calculatePerformanceMetrics(portfolio, historicalData) {
+  try {
+    if (!historicalData || historicalData.length < 2) {
+      return { dailyChange: 0, weeklyChange: 0, monthlyChange: 0 };
+    }
+    
+    const currentValue = parseFloat(portfolio.totalValueUSD);
+    const lastDayValue = parseFloat(historicalData[historicalData.length - 2].value);
+    const weekAgoIndex = Math.max(0, historicalData.length - 8);
+    const weekAgoValue = parseFloat(historicalData[weekAgoIndex].value);
+    const monthAgoValue = parseFloat(historicalData[0].value);
+    
+    const dailyChange = ((currentValue - lastDayValue) / lastDayValue) * 100;
+    const weeklyChange = ((currentValue - weekAgoValue) / weekAgoValue) * 100;
+    const monthlyChange = ((currentValue - monthAgoValue) / monthAgoValue) * 100;
+    
+    return {
+      dailyChange: dailyChange.toFixed(2),
+      weeklyChange: weeklyChange.toFixed(2),
+      monthlyChange: monthlyChange.toFixed(2)
+    };
+  } catch (error) {
+    console.error('Error calculating performance metrics:', error);
+    return { dailyChange: 0, weeklyChange: 0, monthlyChange: 0 };
+  }
 }
 
 module.exports = {
   getPortfolioData,
-  analyzePortfolioPerformance
+  calculateRiskMetrics,
+  calculatePerformanceMetrics,
+  getHistoricalPerformance
 };

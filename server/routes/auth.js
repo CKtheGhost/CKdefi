@@ -1,9 +1,8 @@
-// /server/routes/auth.js - Authentication routes for CompounDefi
+// server/routes/auth.js
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { verifySignature } = require('../utils/aptosClient');
-const { generateToken, verifyToken } = require('../middleware/auth');
+const { verifySignature, generateToken, verifyToken } = require('../middleware/auth');
 
 /**
  * @route   POST /auth/wallet-verify
@@ -111,7 +110,7 @@ router.get('/verify-token', (req, res) => {
       });
     }
     
-    const decoded = verifyToken(token);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'compoundefi-secret-key');
     
     res.json({
       success: true,

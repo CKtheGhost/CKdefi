@@ -9,16 +9,19 @@ const portfolioTracker = require('../modules/portfolio_tracker');
 const tokenTracker = require('../modules/token_tracker');
 const newsTracker = require('../modules/news_tracker');
 const autoRebalancer = require('../modules/auto_rebalancer');
+const { getLogger } = require('../utils/logging');
+
+// Instantiate logger
+const logger = getLogger('api');
 
 // Import middleware
 const { apiKeyAuth } = require('../middleware/auth');
-const errorHandler = require('../middleware/errorHandler');
+const { errorHandler } = require('../middleware/errorHandler'); // Destructure to get the function
 
-// Rate limiter for API endpoints
+// Rate limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
-  standardHeaders: true,
+  max: 100,
   message: {
     status: 429,
     error: 'Too many requests, please try again later'
@@ -48,7 +51,7 @@ router.get('/status', (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Status API error:', error);
+    logger.error('Status API error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -66,7 +69,6 @@ router.get('/wallet/:address', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid wallet address format' });
     }
 
-    // Get portfolio data with retry mechanism
     let portfolioData;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -78,7 +80,6 @@ router.get('/wallet/:address', async (req, res, next) => {
       }
     }
     
-    // Get staking recommendations
     let stakingRecommendations;
     try {
       stakingRecommendations = await stakingOptimizer.getPersonalizedRecommendations(
@@ -86,7 +87,7 @@ router.get('/wallet/:address', async (req, res, next) => {
         portfolioData
       );
     } catch (recommendationsError) {
-      console.error('Recommendations error:', recommendationsError);
+      logger.error('Recommendations error:', recommendationsError);
       stakingRecommendations = { error: recommendationsError.message };
     }
 
@@ -97,7 +98,7 @@ router.get('/wallet/:address', async (req, res, next) => {
       lastUpdated: new Date().toISOString()
     });
   } catch (error) {
-    next(error);
+    next(error); // Passes to errorHandler middleware
   }
 });
 
@@ -156,7 +157,7 @@ router.get('/contracts', (req, res) => {
     };
     res.json(contractData);
   } catch (error) {
-    console.error('Error serving contract addresses:', error);
+    logger.error('Error serving contract addresses:', error);
     res.status(500).json({
       error: 'Failed to fetch contract addresses',
       lastUpdated: new Date().toISOString()
@@ -179,26 +180,23 @@ router.get('/recommendations/ai', async (req, res, next) => {
       });
     }
 
-    // Get staking data for recommendation generation
     let stakingData;
     try {
       stakingData = await stakingOptimizer.getStakingData();
     } catch (stakingError) {
-      console.error('Failed to fetch staking data:', stakingError);
+      logger.error('Failed to fetch staking data:', stakingError);
       stakingData = { protocols: {}, strategies: {} };
     }
     
-    // Get portfolio data if wallet address provided
     let portfolioData = null;
     if (walletAddress) {
       try {
         portfolioData = await portfolioTracker.getPortfolioData(walletAddress);
       } catch (portfolioError) {
-        console.error('Failed to fetch portfolio data:', portfolioError);
+        logger.error('Failed to fetch portfolio data:', portfolioError);
       }
     }
 
-    // Generate AI recommendation
     const aiRecommendation = await stakingOptimizer.generateAIRecommendation(
       parseFloat(amount),
       riskProfile,
@@ -232,7 +230,6 @@ router.post('/execute-strategy', async (req, res, next) => {
       });
     }
 
-    // Execute the operations
     const results = await stakingOptimizer.executeStrategy(walletAddress, amount, operations);
 
     res.json(results);
@@ -254,7 +251,11 @@ router.get('/auto-rebalance/status', async (req, res, next) => {
       return res.status(400).json({ error: 'Wallet address is required' });
     }
     
-    const status = await autoRebalancer.getStatus(walletAddress);
+    const status = autoRebalancer.getAutoRebalanceMonitoringStatus(walletAddress) || {
+      walletAddress,
+      monitoring: false,
+      message: 'No auto-rebalance monitoring active'
+    };
     res.json(status);
   } catch (error) {
     next(error);
@@ -274,12 +275,20 @@ router.post('/auto-rebalance/settings', async (req, res, next) => {
       return res.status(400).json({ error: 'Wallet address is required' });
     }
     
-    const result = await autoRebalancer.updateSettings(walletAddress, {
-      enabled,
-      interval,
-      threshold,
-      slippage
-    });
+    const settings = {};
+    if (threshold !== undefined) settings.minRebalanceThreshold = threshold;
+    if (slippage !== undefined) settings.maxSlippage = slippage;
+    if (interval !== undefined) settings.cooldownPeriod = interval;
+
+    const result = await autoRebalancer.setRebalanceSettings(walletAddress, settings);
+    
+    if (enabled !== undefined) {
+      if (enabled) {
+        await autoRebalancer.enableAutoRebalanceMonitoring(walletAddress, { checkInterval: interval });
+      } else {
+        autoRebalancer.disableAutoRebalanceMonitoring(walletAddress);
+      }
+    }
     
     res.json(result);
   } catch (error) {
@@ -315,17 +324,16 @@ router.post('/auto-rebalance/execute', async (req, res, next) => {
 router.post('/user/preferences', (req, res) => {
   const { riskProfile, activeSection, darkMode } = req.body;
   
-  // Set cookies for persistence
   if (riskProfile) {
-    res.cookie('riskProfile', riskProfile, { maxAge: 30 * 24 * 60 * 60 * 1000 }); // 30 days
+    res.cookie('riskProfile', riskProfile, { maxAge: 30 * 24 * 60 * 60 * 1000 });
   }
   
   if (activeSection) {
-    res.cookie('activeSection', activeSection, { maxAge: 30 * 24 * 60 * 60 * 1000 }); // 30 days
+    res.cookie('activeSection', activeSection, { maxAge: 30 * 24 * 60 * 60 * 1000 });
   }
   
   if (darkMode !== undefined) {
-    res.cookie('darkMode', darkMode, { maxAge: 30 * 24 * 60 * 60 * 1000 }); // 30 days
+    res.cookie('darkMode', darkMode, { maxAge: 30 * 24 * 60 * 60 * 1000 });
   }
   
   res.json({
@@ -339,4 +347,5 @@ router.post('/user/preferences', (req, res) => {
 // Error handling middleware
 router.use(errorHandler);
 
+// Export the router
 module.exports = router;

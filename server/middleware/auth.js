@@ -1,109 +1,52 @@
-// auth.js - Authentication middleware for CompounDefi API
-// Handles wallet authentication and request verification
-
+// server/middleware/auth.js
 const jwt = require('jsonwebtoken');
 const { Ed25519PublicKey } = require('@aptos-labs/ts-sdk');
 
 // JWT secret key - should be in environment variables in production
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
+const JWT_SECRET = process.env.JWT_SECRET || 'compoundefi-secret-key';
 const JWT_EXPIRY = '24h'; // Token expiry time
 
 /**
- * Verify wallet signature to authenticate requests
- * Allows public endpoints to pass through without authentication
+ * Middleware to verify JWT token
  */
-function verifyWalletAuth(req, res, next) {
-  // Public endpoints that don't require authentication
-  const publicEndpoints = [
-    { path: '/api/status', method: 'GET' },
-    { path: '/api/tokens/latest', method: 'GET' },
-    { path: '/api/news/latest', method: 'GET' },
-    { path: '/api/contracts', method: 'GET' }
-  ];
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
   
-  // Check if the request is for a public endpoint
-  const isPublicEndpoint = publicEndpoints.some(endpoint => 
-    req.path.startsWith(endpoint.path) && req.method === endpoint.method
-  );
-  
-  if (isPublicEndpoint) {
-    return next(); // Allow access to public endpoints
-  }
-  
-  // Get authentication token from header
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
+  if (!token) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   
   try {
-    // Extract token from Authorization header
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'Invalid authorization format' });
-    }
-    
-    // Verify JWT token
     const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // Add user data to request object
     req.user = decoded;
-    
     next();
   } catch (error) {
-    console.error('Authentication error:', error);
+    console.error('Token verification error:', error);
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
-}
+};
 
 /**
- * Verify that the wallet address in request belongs to the authenticated user
- * Used for routes that operate on specific wallet addresses
- */
-function verifyWalletOwnership(req, res, next) {
-  // Skip verification for admin users if needed
-  if (req.user && req.user.role === 'admin') {
-    return next();
-  }
-  
-  // Get wallet address from params or body
-  const walletAddress = req.params.address || req.body.walletAddress;
-  
-  if (!walletAddress) {
-    return res.status(400).json({ error: 'Wallet address is required' });
-  }
-  
-  // Verify that the wallet address belongs to the authenticated user
-  if (req.user && req.user.address !== walletAddress) {
-    return res.status(403).json({ 
-      error: 'You are not authorized to access this wallet\'s data' 
-    });
-  }
-  
-  next();
-}
-
-/**
- * Generate JWT token for authenticated wallet
+ * Generate JWT token
  * @param {string} address - Wallet address
- * @param {Object} metadata - Additional user metadata
+ * @param {Object} metadata - Additional metadata
  * @returns {string} JWT token
  */
-function generateToken(address, metadata = {}) {
+const generateToken = (address, metadata = {}) => {
   return jwt.sign({ 
     address,
     ...metadata
   }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-}
+};
 
 /**
- * Verify a wallet signature to authenticate user
+ * Verify wallet signature
  * @param {string} address - Wallet address
- * @param {string} message - Original message that was signed
+ * @param {string} message - Message that was signed
  * @param {string} signature - Signature to verify
- * @returns {boolean} True if signature is valid
+ * @returns {boolean} Whether signature is valid
  */
-async function verifyWalletSignature(address, message, signature) {
+const verifySignature = async (address, message, signature) => {
   try {
     // Convert hex address to public key
     const publicKey = new Ed25519PublicKey(address);
@@ -119,11 +62,10 @@ async function verifyWalletSignature(address, message, signature) {
     console.error('Signature verification error:', error);
     return false;
   }
-}
+};
 
 module.exports = {
-  verifyWalletAuth,
-  verifyWalletOwnership,
+  verifyToken,
   generateToken,
-  verifyWalletSignature
+  verifySignature
 };

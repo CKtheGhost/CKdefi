@@ -1,0 +1,191 @@
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useWallet } from '../hooks/useWallet';
+import { usePortfolio } from '../hooks/usePortfolio';
+import DashboardLayout from '../components/layout/DashboardLayout';
+import WalletHeader from '../components/wallet/WalletHeader';
+import AllocationChart from '../components/wallet/AllocationChart';
+import PerformanceChart from '../components/wallet/PerformanceChart';
+import StakedAssets from '../components/wallet/StakedAssets';
+import LiquidityPositions from '../components/wallet/LiquidityPositions';
+import TransactionHistory from '../components/wallet/TransactionHistory';
+import ActionItems from '../components/dashboard/ActionItems';
+import LoadingScreen from '../components/common/LoadingScreen';
+import { useNotification } from '../context/NotificationContext';
+
+const WalletAnalysis = () => {
+  const { walletAddress } = useParams();
+  const navigate = useNavigate();
+  const { connected, address, connectWallet } = useWalletContext();
+  const { 
+    portfolio, 
+    stakingRecommendations, 
+    loading, 
+    error, 
+    fetchPortfolioData 
+  } = usePortfolio();
+  const { showNotification } = useNotification();
+  const [activeSection, setActiveSection] = useState('wallet-analysis');
+
+  // Use the connected wallet's address if no address is provided in URL
+  const targetAddress = walletAddress || address;
+
+  useEffect(() => {
+    if (targetAddress) {
+      fetchPortfolioData(targetAddress);
+      
+      // Set up automatic refresh interval (every 2 minutes)
+      const refreshInterval = setInterval(() => {
+        fetchPortfolioData(targetAddress);
+      }, 2 * 60 * 1000);
+      
+      return () => clearInterval(refreshInterval);
+    } else if (connected) {
+      // Redirect to the connected wallet's analysis page
+      navigate(`/wallet/${address}`);
+    }
+  }, [targetAddress, connected, address, fetchPortfolioData, navigate]);
+
+  useEffect(() => {
+    // Display error notification if there's a problem with portfolio data
+    if (error) {
+      showNotification(`Error analyzing wallet: ${error}`, 'error');
+    }
+  }, [error, showNotification]);
+
+  // Handle section change
+  const handleSectionChange = (section) => {
+    setActiveSection(section);
+  };
+
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet();
+    } catch (error) {
+      showNotification(`Failed to connect wallet: ${error.message}`, 'error');
+    }
+  };
+
+  if (!targetAddress) {
+    return (
+      <DashboardLayout activeSection={activeSection} onSectionChange={handleSectionChange}>
+        <div className="container mx-auto px-4 py-12 text-center">
+          <h2 className="text-2xl font-bold mb-6">Wallet Analysis</h2>
+          <div className="bg-white shadow rounded-lg p-8 max-w-md mx-auto">
+            <p className="text-gray-600 mb-6">Connect your wallet to view your portfolio analysis</p>
+            <button 
+              onClick={handleConnectWallet} 
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              Connect Wallet
+            </button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (loading && !portfolio) {
+    return <LoadingScreen message={`Analyzing wallet ${targetAddress.slice(0, 6)}...${targetAddress.slice(-4)}`} />;
+  }
+
+  return (
+    <DashboardLayout activeSection={activeSection} onSectionChange={handleSectionChange}>
+      <section id="wallet-analysis">
+        <div className="container mx-auto px-4 py-6">
+          <WalletHeader 
+            address={targetAddress} 
+            totalValue={portfolio?.totalValueUSD || 0} 
+            aptPrice={portfolio?.apt?.priceUSD || 0}
+          />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Portfolio Allocation</h3>
+                <div className="h-64">
+                  <AllocationChart portfolioData={portfolio} />
+                </div>
+              </div>
+              
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Performance</h3>
+                <div className="h-64">
+                  <PerformanceChart portfolioData={portfolio} />
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Summary</h3>
+                <PortfolioSummary portfolio={portfolio} />
+              </div>
+              
+              <ActionItems 
+                connected={connected} 
+                connecting={false} 
+                address={targetAddress}
+                recommendations={stakingRecommendations}
+              />
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-4">Staked Assets</h3>
+              <StakedAssets portfolio={portfolio} />
+            </div>
+            
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-4">Liquidity Positions</h3>
+              <LiquidityPositions portfolio={portfolio} />
+            </div>
+          </div>
+          
+          <div className="bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-semibold mb-4">Transaction History</h3>
+            <TransactionHistory transactions={portfolio?.recentTransactions || []} />
+          </div>
+        </div>
+      </section>
+    </DashboardLayout>
+  );
+};
+
+function PortfolioSummary({ portfolio }) {
+  if (!portfolio) return <p>No portfolio data available</p>;
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between">
+        <span className="text-gray-600">Total Value:</span>
+        <span className="font-semibold">${portfolio.totalValueUSD?.toFixed(2) || '0.00'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Native APT:</span>
+        <span className="font-semibold">{portfolio.apt?.amount || '0'} APT</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Staked APT:</span>
+        <span className="font-semibold">
+          {(parseFloat(portfolio.stAPT?.amount || 0) + 
+           parseFloat(portfolio.sthAPT?.amount || 0) + 
+           parseFloat(portfolio.tAPT?.amount || 0)).toFixed(2)} APT
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Liquidity Positions:</span>
+        <span className="font-semibold">${portfolio.ammLiquidity?.valueUSD?.toFixed(2) || '0.00'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Unrealized Gains:</span>
+        <span className={`font-semibold ${portfolio.unrealizedGainUSD > 0 ? 'text-green-600' : portfolio.unrealizedGainUSD < 0 ? 'text-red-600' : ''}`}>
+          ${portfolio.unrealizedGainUSD?.toFixed(2) || '0.00'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default WalletAnalysis;

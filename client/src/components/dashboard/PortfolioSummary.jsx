@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useWallet } from '../../context/WalletContext';
+import { useWalletContext } from '../../context/WalletContext';
 import { useData } from '../../context/DataContext';
 import { Link } from 'react-router-dom';
 
 const PortfolioSummary = () => {
-  const { walletAddress } = useWallet();
+  const { walletAddress } = useWalletContext();
   const { portfolioData, loadingPortfolio, fetchWalletData } = useData();
   const [chartInitialized, setChartInitialized] = useState(false);
 

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '../../context/WalletContext';
+import { useWalletContext } from '../../context/WalletContext';
 import Navbar from '../common/Navbar';
 import Sidebar from '../common/Sidebar';
 import Notifications from '../common/Notifications';
 import LoadingScreen from '../common/LoadingScreen';
 
 const DashboardLayout = ({ children }) => {
-  const { walletConnected, walletAddress } = useWallet();
+  const { walletConnected, walletAddress } = useWalletContext();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);

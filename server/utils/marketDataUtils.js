@@ -324,7 +324,7 @@ async function getProtocolAPRs(options = {}) {
     // Calculate recommended protocol based on highest APR
     const recommendedProtocol = Object.entries(protocols)
       .filter(([_, data]) => data.staking && data.staking.apr > 0)
-      .sort(([_, a], [_, b]) => b.staking.apr - a.staking.apr)[0]?.[0] || 'amnis';
+      .sort((pairA, pairB) => pairB[1].staking.apr - pairA[1].staking.apr)[0]?.[0] || 'amnis';
     
     const result = {
       protocols,
@@ -518,7 +518,7 @@ function generateStrategies(protocols) {
   // Sort protocols by staking APR
   const stakingProtocols = Object.entries(protocols)
     .filter(([_, data]) => data.staking && data.staking.apr > 0)
-    .sort(([_, a], [_, b]) => b.staking.apr - a.staking.apr);
+    .sort((pairA, pairB) => pairB[1].staking.apr - pairA[1].staking.apr);
   
   if (stakingProtocols.length === 0) {
     return strategies;

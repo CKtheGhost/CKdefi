@@ -3,16 +3,12 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import { AptosWalletAdapterProvider } from '@aptos-labs/wallet-adapter-react';
-import { PetraWallet } from 'petra-plugin-wallet-adapter';
 import { MartianWallet } from '@martianwallet/aptos-wallet-adapter';
-import { PontemWallet } from '@pontem/wallet-adapter-plugin';
 import { ThemeProvider } from './context/ThemeContext';
 
-// Initialize wallets
+// Only use the wallets we've actually installed
 const wallets = [
-  new PetraWallet(),
-  new MartianWallet(),
-  new PontemWallet()
+  new MartianWallet()
 ];
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

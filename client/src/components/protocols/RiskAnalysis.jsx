@@ -245,7 +245,7 @@ const RiskAnalysis = ({ protocols }) => {
       
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-gray-700 p-4 rounded-lg">
-          <h3 className="text-lg font-semibold mb-2 text-white">Low Risk (<40)</h3>
+          <h3 className="text-lg font-semibold mb-2 text-white">Low Risk (&lt;40)</h3>
           <p className="text-sm text-gray-300">Protocols with robust audits, high liquidity, and established track records. These typically have minimal smart contract risk and strong governance structures.</p>
           <div className="flex items-center mt-2">
             <div className="w-4 h-4 rounded-full bg-green-500 mr-2"></div>
@@ -263,7 +263,7 @@ const RiskAnalysis = ({ protocols }) => {
         </div>
         
         <div className="bg-gray-700 p-4 rounded-lg">
-          <h3 className="text-lg font-semibold mb-2 text-white">High Risk (>70)</h3>
+          <h3 className="text-lg font-semibold mb-2 text-white">High Risk (&gt;70)</h3>
           <p className="text-sm text-gray-300">Protocols with higher risk factors such as limited audits, complex mechanisms, or higher regulatory concerns. May offer higher APR but with increased risk.</p>
           <div className="flex items-center mt-2">
             <div className="w-4 h-4 rounded-full bg-red-500 mr-2"></div>

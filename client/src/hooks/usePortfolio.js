@@ -8,7 +8,7 @@ import api from '../services/api';
  * Hook for fetching and managing portfolio data from a wallet
  */
 const usePortfolio = (walletAddressParam) => {
-  const { isConnected, walletAddress: connectedWalletAddress } = useWallet();
+  const { isConnected, walletAddress: connectedWalletAddress } = useWalletContext();
   const { showNotification } = useContext(NotificationContext);
   
   // Use provided wallet address or the connected wallet address

@@ -10,7 +10,7 @@ import api from '../services/api';
  * Hook for working with AI-powered investment recommendations
  */
 const useRecommendations = () => {
-  const { walletAddress } = useWallet();
+  const { walletAddress } = useWalletContext();
   const { totalValue, portfolioData } = usePortfolio();
   const { showNotification } = useContext(NotificationContext);
   const { executeStrategy } = useContext(TransactionContext);

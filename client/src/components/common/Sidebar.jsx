@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useWallet } from '../../context/WalletContext';
+import { useWalletContext } from '../../context/WalletContext';
 import { useTheme } from '../../context/ThemeContext';
 
 const Sidebar = () => {
   const location = useLocation();
-  const { walletConnected, connectWallet, walletAddress, disconnectWallet } = useWallet();
+  const { walletConnected, connectWallet, walletAddress, disconnectWallet } = useWalletContext();
   const { darkMode, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState(false);

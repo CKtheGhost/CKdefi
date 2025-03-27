@@ -249,6 +249,46 @@ const PortfolioBalance = ({ portfolioData, stakingData }) => {
                       <div className={`w-3 h-3 rounded-full mr-2 ${getColorForProtocol(item.protocol)}`}></div>
                       <span className="text-white">{item.name}</span>
                     </div>
+                    <div className="text-right">
+                      <div className="text-white">{item.percentage}%</div>
+                      <div className="text-gray-500 text-xs">{item.amount} APT</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Recommended Allocation */}
+            <div>
+              <h3 className="text-md font-medium text-gray-300 mb-3">Recommended Allocation</h3>
+              <div className="space-y-2">
+                {recommendedAllocation.map((item, index) => (
+                  <div key={index} className="flex justify-between items-center">
+                    <div className="flex items-center">
+                      <div className={`w-3 h-3 rounded-full mr-2 ${getColorForProtocol(item.protocol)}`}></div>
+                      <span className="text-white">{item.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white">{item.percentage}%</div>
+                      <div className="text-gray-500 text-xs">{item.amount} APT</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          {/* Drift Analysis */}
+          {driftAnalysis && (
+            <div className="mt-4 border-t border-gray-700 pt-4">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-md font-medium text-gray-300">Drift Analysis</h3>
+                <div className={`px-2 py-1 rounded-md text-xs font-medium ${
+                  needsRebalance ? 'bg-red-900/50 text-red-400' : 'bg-green-900/50 text-green-400'
+                }`}>
+                  {needsRebalance ? 'Rebalance Recommended' : 'Portfolio Balanced'}
+                </div>
+              </div>
               
               <div className="mt-2 space-y-2">
                 {driftAnalysis.drifts.map((drift, index) => (
@@ -317,43 +357,4 @@ const getColorForProtocol = (protocol) => {
   return colorMap[protocol] || 'bg-gray-500';
 };
 
-export default PortfolioBalance;      <div className="text-right">
-                      <div className="text-white">{item.percentage}%</div>
-                      <div className="text-gray-500 text-xs">{item.amount} APT</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Recommended Allocation */}
-            <div>
-              <h3 className="text-md font-medium text-gray-300 mb-3">Recommended Allocation</h3>
-              <div className="space-y-2">
-                {recommendedAllocation.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center">
-                    <div className="flex items-center">
-                      <div className={`w-3 h-3 rounded-full mr-2 ${getColorForProtocol(item.protocol)}`}></div>
-                      <span className="text-white">{item.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-white">{item.percentage}%</div>
-                      <div className="text-gray-500 text-xs">{item.amount} APT</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          {/* Drift Analysis */}
-          {driftAnalysis && (
-            <div className="mt-4 border-t border-gray-700 pt-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-md font-medium text-gray-300">Drift Analysis</h3>
-                <div className={`px-2 py-1 rounded-md text-xs font-medium ${
-                  needsRebalance ? 'bg-red-900/50 text-red-400' : 'bg-green-900/50 text-green-400'
-                }`}>
-                  {needsRebalance ? 'Rebalance Recommended' : 'Portfolio Balanced'}
-                </div>
-              </div>
+export default PortfolioBalance;

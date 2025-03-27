@@ -1,27 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { AptosWalletAdapterProvider } from '@aptos-labs/wallet-adapter-react';
 
-// Pages
+// Import pages
 import Dashboard from './pages/Dashboard';
-import WalletAnalysis from './pages/WalletAnalysis';
 import AIRecommendations from './pages/AIRecommendations';
-import ProtocolComparison from './pages/ProtocolComparison';
-import AutoOptimizer from './pages/AutoOptimizer';
-import Settings from './pages/Settings';
-import Landing from './pages/Landing';
 
-// Components
-import Navbar from './components/common/Navbar';
-import Sidebar from './components/common/Sidebar';
-import LoadingScreen from './components/common/LoadingScreen';
-import WalletConnectModal from './components/common/WalletConnectModal';
-import Notifications from './components/common/Notifications';
-import MatrixBackground from './components/common/MatrixBackground';
-
-// Context
-import { WalletProvider } from './context/WalletContext';
+// Import context providers
 import { DataProvider } from './context/DataContext';
-import { NotificationProvider } from './context/NotificationContext';
-import { TransactionProvider } from './context/TransactionContext';
-import { UserProvider } from './context/UserContext';
+
+const App = () => {
+  return (
+    <AptosWalletAdapterProvider plugins={[]} autoConnect={false}>
+      <DataProvider>
+        <Router>
+          <div className="min-h-screen bg-gray-50">
+            <main className="p-4 sm:p-6 max-w-7xl mx-auto">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/recommendations" element={<AIRecommendations />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </main>
+          </div>
+        </Router>
+      </DataProvider>
+    </AptosWalletAdapterProvider>
+  );
+};
+
+export default App;

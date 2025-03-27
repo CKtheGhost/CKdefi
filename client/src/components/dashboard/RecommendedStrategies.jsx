@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { useWallet } from '../../context/WalletContext';
+import { useWalletContext } from '../../context/WalletContext';
 import { Link } from 'react-router-dom';
 
 const RecommendedStrategies = ({ stakingData }) => {
-  const { walletConnected } = useWallet();
+  const { walletConnected } = useWalletContext();
   const { portfolioData } = useData();
   const [selectedStrategy, setSelectedStrategy] = useState('balanced');
 

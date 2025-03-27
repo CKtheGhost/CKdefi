@@ -260,6 +260,27 @@ const ProtocolTable = () => {
             <tr>
               <th 
                 className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('name')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Protocol</span>
+                  {renderSortIcon('name')}
+                </div>
+              </th>
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('blendedApr')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Blended APR</span>
+                  {renderSortIcon('blendedApr')}
+                  <Tooltip content="Combined APR across all protocol services">
+                    <InformationCircleIcon className="w-4 h-4 text-gray-400" />
+                  </Tooltip>
+                </div>
+              </th>
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
                 onClick={() => handleSort('stakingApr')}
               >
                 <div className="flex items-center space-x-1">
@@ -378,25 +399,4 @@ const ProtocolTable = () => {
   );
 };
 
-export default ProtocolTable;6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSort('name')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Protocol</span>
-                  {renderSortIcon('name')}
-                </div>
-              </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSort('blendedApr')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Blended APR</span>
-                  {renderSortIcon('blendedApr')}
-                  <Tooltip content="Combined APR across all protocol services">
-                    <InformationCircleIcon className="w-4 h-4 text-gray-400" />
-                  </Tooltip>
-                </div>
-              </th>
-              <th 
-                className="px-
+export default ProtocolTable;
