@@ -6,16 +6,31 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { Anthropic } = require('anthropic');
 const { OpenAI } = require('openai');
-const routes = require('./routes');
+const mongoose = require('mongoose');
+const morgan = require('morgan');
+const { expressjwt: jwt } = require('express-jwt');
+
+// Import controllers
+const userController = require('./controllers/userController');
+const portfolioController = require('./controllers/portfolioController');
+const recommendationController = require('./controllers/recommendationController');
 
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
 // Rate limiting for API routes
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -24,14 +39,21 @@ const apiLimiter = rateLimit({
   }
 });
 
-// Enhanced middleware setup
+// Middleware setup
 app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev')); // Request logging
 app.use('/api/', apiLimiter);
 
-// Serve static files with proper caching
+// JWT authentication middleware
+app.use('/api', jwt({
+  secret: process.env.JWT_SECRET,
+  algorithms: ['HS256'],
+}).unless({ path: ['/api/users', '/api/status'] })); // Public routes
+
+// Serve static files with caching
 app.use('/js', express.static(path.join(__dirname, 'public/js'), { maxAge: '1d' }));
 app.use('/css', express.static(path.join(__dirname, 'public/css'), { maxAge: '1d' }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '4h' }));
@@ -57,19 +79,19 @@ if (process.env.OPENAI_API_KEY) {
 }
 
 // Routes
-app.use('/api', routes);
+app.post('/api/users', userController.createUser); // Create a new user
+app.get('/api/portfolios/:userId', portfolioController.getPortfolio); // Fetch user portfolio
+app.get('/api/recommendations/ai', recommendationController.getAIRecommendation); // AI recommendations
 
 // Root route - Dashboard
 app.get('/', async (req, res) => {
   try {
-    const stakingData = { protocols: {}, strategies: {} };
-    const newsData = { articles: [], lastUpdated: new Date().toISOString() };
-    const tokenData = { coins: [], lastUpdated: new Date().toISOString() };
-    
+    const portfolios = await portfolioController.getRecentPortfolios(10); // Fetch recent portfolios
     res.render('dashboard', {
-      stakingData,
-      newsData,
-      tokenData,
+      portfolios,
+      stakingData: { protocols: {}, strategies: {} }, // Placeholder
+      newsData: { articles: [], lastUpdated: new Date().toISOString() }, // Placeholder
+      tokenData: { coins: [], lastUpdated: new Date().toISOString() }, // Placeholder
       walletData: null,
       error: null,
       pageTitle: 'CompounDefi - AI-Powered Yield Optimizer',
@@ -78,6 +100,7 @@ app.get('/', async (req, res) => {
   } catch (e) {
     console.error('Dashboard rendering error:', e);
     res.status(500).render('dashboard', {
+      portfolios: [],
       stakingData: { protocols: {}, strategies: {} },
       newsData: { articles: [], lastUpdated: new Date().toISOString() },
       tokenData: { coins: [], lastUpdated: new Date().toISOString() },
@@ -89,106 +112,19 @@ app.get('/', async (req, res) => {
   }
 });
 
-// AI recommendations endpoint
-app.get('/api/recommendations/ai', async (req, res) => {
-  try {
-    const { amount, riskProfile, walletAddress } = req.query;
-
-    if (!amount || isNaN(parseFloat(amount)) || !riskProfile) {
-      return res.status(400).json({ 
-        error: 'Invalid parameters. Required: amount (number) and riskProfile (conservative/balanced/aggressive)' 
-      });
-    }
-
-    if (!anthropicClient && !openaiClient) {
-      throw new Error('No AI API keys available. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env file.');
-    }
-
-    const prompt = `As an AI financial advisor specialized in Aptos DeFi, provide a personalized staking and investment strategy for a user with:
-1. Amount to invest: ${amount} APT
-2. Risk profile: ${riskProfile}
-3. Current portfolio: ${walletAddress ? "Connected wallet" : 'Not provided'}
-
-Provide a JSON response with:
-- title: Recommendation title
-- summary: Brief summary (2-3 sentences)
-- allocation: Array of {protocol, product, percentage, expectedApr}
-- totalApr: Blended APR
-- steps: Array of implementation instructions
-- risks: Array of investment risks
-- mitigations: Array of risk mitigation strategies
-- additionalNotes: Additional insights or recommendations`;
-
-    let aiResponse;
-    try {
-      if (anthropicClient) {
-        const response = await anthropicClient.messages.create({
-          model: "claude-3-sonnet-20240229",
-          max_tokens: 4000,
-          temperature: 0.2,
-          messages: [
-            { role: "user", content: prompt }
-          ]
-        });
-        
-        aiResponse = { content: response.content[0].text };
-      } else {
-        throw new Error('Anthropic API client not available');
-      }
-    } catch (anthropicError) {
-      console.error('Anthropic API failed:', anthropicError.message);
-      
-      if (openaiClient) {
-        try {
-          const openaiResponse = await openaiClient.chat.completions.create({
-            model: "gpt-4",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.2,
-            response_format: { type: "json_object" }
-          });
-          
-          aiResponse = { content: openaiResponse.choices[0].message.content };
-        } catch (openaiError) {
-          console.error('OpenAI API also failed:', openaiError.message);
-          throw new Error('Both AI providers failed to generate a recommendation');
-        }
-      } else {
-        throw new Error('No OpenAI API key available as fallback');
-      }
-    }
-
-    let aiRecommendation;
-    try {
-      const content = aiResponse.content || aiResponse;
-      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
-      
-      if (!jsonMatch) {
-        throw new Error("Could not parse AI response as JSON");
-      }
-      
-      aiRecommendation = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError.message);
-      throw new Error(`Failed to parse AI recommendation: ${parseError.message}`);
-    }
-    
-    res.json(aiRecommendation);
-  } catch (error) {
-    console.error('AI recommendation error:', error.message);
-    res.status(500).json({ 
-      error: 'Error generating AI recommendation', 
-      details: error.message 
-    });
-  }
-});
-
-// App status/health check endpoint
+// Health check endpoint
 app.get('/api/status', async (req, res) => {
   res.json({
     status: 'online',
     version: '1.0.0',
     timestamp: new Date().toISOString()
   });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
 });
 
 // Start the application
