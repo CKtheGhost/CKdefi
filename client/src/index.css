@@ -1,0 +1,182 @@
+/* client/src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+@layer base {
+  :root {
+    --primary: #3b82f6;
+    --primary-dark: #2563eb;
+    --secondary: #10b981;
+    --accent: #8b5cf6;
+    --warning: #f59e0b;
+    --error: #ef4444;
+    --background: #0f172a;
+    --card: #1e293b;
+    --card-hover: #334155;
+    --text: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border: #475569;
+    --input: #334155;
+  }
+
+  body {
+    @apply bg-gray-900 text-gray-100 font-sans;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors;
+  }
+  
+  .btn-outline {
+    @apply border border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white px-4 py-2 rounded-lg transition-colors;
+  }
+  
+  .card {
+    @apply bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-700;
+  }
+  
+  .data-card {
+    @apply bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-blue-500 transition-colors;
+  }
+  
+  .section-title {
+    @apply text-xl font-bold text-gray-100 mb-4 border-b border-gray-700 pb-2;
+  }
+}
+
+/* Animation styles */
+.matrix-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.custom-loader {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: 
+    radial-gradient(farthest-side,#3b82f6 94%,#0000) top/8px 8px no-repeat,
+    conic-gradient(#0000 30%,#3b82f6);
+  -webkit-mask: radial-gradient(farthest-side,#0000 calc(100% - 8px),#000 0);
+  animation: spinner-c7wet2 1s infinite linear;
+}
+
+@keyframes spinner-c7wet2 {
+  100% {
+    transform: rotate(1turn);
+  }
+}
+
+.notification-toast {
+  @apply fixed top-4 right-4 z-50 rounded-lg shadow-lg transition-opacity duration-300;
+}
+
+.nav-tab {
+  @apply py-2 px-4 rounded-lg text-gray-300 hover:text-white transition-colors cursor-pointer;
+}
+
+.nav-tab.active {
+  @apply bg-blue-600 text-white;
+}
+
+.progressive-load {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-600 rounded-lg;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
+
+/* Crypto ticker styles */
+.ticker-container {
+  @apply overflow-hidden w-full;
+  background: linear-gradient(to right, rgba(15,23,42,0.9), rgba(15,23,42,0.7));
+}
+
+.ticker-wrapper {
+  @apply flex items-center whitespace-nowrap animate-marquee;
+}
+
+.ticker-item {
+  @apply flex items-center mx-4 p-1;
+}
+
+.ticker-image {
+  @apply w-5 h-5 rounded-full;
+}
+
+.ticker-symbol {
+  @apply font-medium text-sm mx-2;
+}
+
+.ticker-price {
+  @apply text-sm text-gray-300 mr-2;
+}
+
+.ticker-positive {
+  @apply text-green-500;
+}
+
+.ticker-negative {
+  @apply text-red-500;
+}
+
+/* Portfolio chart styles */
+.chart-container {
+  @apply bg-gray-800 rounded-lg p-4 border border-gray-700;
+  height: 250px;
+}
