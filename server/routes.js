@@ -6,6 +6,7 @@ const recommendationController = require('./controllers/recommendationController
 
 // User routes
 router.post('/users', userController.createUser);
+router.post('/login', userController.loginUser);
 
 // Portfolio routes
 router.get('/portfolios/:userId', portfolioController.getPortfolio);

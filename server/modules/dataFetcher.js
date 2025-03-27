@@ -1,16 +1,17 @@
 const axios = require('axios');
+const { AptosClient } = require('@aptos-labs/ts-sdk');
 
-exports.getStakingData = async () => {
-  // Placeholder: Implement actual staking data fetching from Aptos blockchain
+exports.getStakingData = async (aptosClient) => {
   try {
-    // Example: Replace with real Aptos blockchain client
-    return {
-      protocols: { 'Protocol A': 5.2, 'Protocol B': 6.8 },
-      strategies: {},
-    };
+    // Example: Fetch staking rates from Aptos blockchain
+    const stakingRates = await aptosClient.view({
+      function: '0x1::staking::get_staking_rate',
+      arguments: [],
+    });
+    return { protocols: { exampleProtocol: stakingRates[0] } };
   } catch (error) {
     console.error('Error fetching staking data:', error);
-    return { protocols: {}, strategies: {} };
+    return { protocols: {} };
   }
 };
 
