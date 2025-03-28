@@ -1,192 +1,59 @@
-// validators.js - Input validation utilities for CompounDefi
+// src/utils/validators.js
+// Validation utility functions for CompounDefi
 
 /**
- * Validate a wallet address
+ * Validate if a string is a valid Aptos wallet address
  * @param {string} address - Wallet address to validate
  * @returns {boolean} Whether the address is valid
  */
 export const isValidAddress = (address) => {
-  if (!address) return false;
+  if (!address || typeof address !== 'string') return false;
   
-  // Aptos address format: 0x followed by 64 hex characters
-  const aptosAddressPattern = /^0x[a-fA-F0-9]{64}$/;
-  return aptosAddressPattern.test(address);
+  // Check address format (hexadecimal with 0x prefix, 64 characters after prefix)
+  const addressRegex = /^0x[a-fA-F0-9]{64}$/;
+  return addressRegex.test(address);
 };
 
 /**
- * Validate an APT amount (must be a positive number)
- * @param {number|string} amount - Amount to validate
- * @param {number} min - Minimum allowed amount (default: 0)
- * @param {number} max - Maximum allowed amount (optional)
+ * Validate if a number is a valid amount
+ * @param {string|number} amount - Amount to validate
+ * @param {number} min - Minimum allowed value
+ * @param {number} max - Maximum allowed value
  * @returns {boolean} Whether the amount is valid
  */
 export const isValidAmount = (amount, min = 0, max = Number.MAX_SAFE_INTEGER) => {
-  if (amount === undefined || amount === null) return false;
-  
-  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-  
-  return !isNaN(numAmount) && numAmount >= min && numAmount <= max;
+  const parsedAmount = parseFloat(amount);
+  return !isNaN(parsedAmount) && parsedAmount >= min && parsedAmount <= max;
 };
 
 /**
- * Validate a percentage value
- * @param {number|string} percentage - Percentage to validate
- * @param {number} min - Minimum allowed percentage (default: 0)
- * @param {number} max - Maximum allowed percentage (default: 100)
- * @returns {boolean} Whether the percentage is valid
- */
-export const isValidPercentage = (percentage, min = 0, max = 100) => {
-  if (percentage === undefined || percentage === null) return false;
-  
-  const numPercentage = typeof percentage === 'string' ? parseFloat(percentage) : percentage;
-  
-  return !isNaN(numPercentage) && numPercentage >= min && numPercentage <= max;
-};
-
-/**
- * Validate an email address
- * @param {string} email - Email address to validate
- * @returns {boolean} Whether the email is valid
- */
-export const isValidEmail = (email) => {
-  if (!email) return false;
-  
-  // Basic email pattern
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailPattern.test(email);
-};
-
-/**
- * Validate a URL
- * @param {string} url - URL to validate
- * @returns {boolean} Whether the URL is valid
- */
-export const isValidUrl = (url) => {
-  if (!url) return false;
-  
-  try {
-    const urlObj = new URL(url);
-    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-  } catch (error) {
-    return false;
-  }
-};
-
-/**
- * Validate a risk profile selection
- * @param {string} profile - Risk profile to validate
- * @returns {boolean} Whether the profile is valid
- */
-export const isValidRiskProfile = (profile) => {
-  if (!profile) return false;
-  
-  const validProfiles = ['conservative', 'balanced', 'aggressive', 'yield_optimizer', 'stablecoin_yield'];
-  return validProfiles.includes(profile.toLowerCase());
-};
-
-/**
- * Validate a protocol name
- * @param {string} protocol - Protocol name to validate
- * @param {Array} allowedProtocols - List of allowed protocols (optional)
- * @returns {boolean} Whether the protocol is valid
- */
-export const isValidProtocol = (protocol, allowedProtocols = null) => {
-  if (!protocol) return false;
-  
-  // Default allowed protocols
-  const defaultProtocols = [
-    'amnis', 'thala', 'tortuga', 'ditto',  // Liquid staking
-    'aries', 'echelon', 'echo', 'joule', 'abel',  // Lending
-    'pancakeswap', 'liquidswap', 'cetus', 'sushi', 'aux',  // DEXes
-    'merkle', 'fetch',  // Yield optimizers
-    'thala_stablecoin', 'momento',  // Stablecoins
-    'pontem', 'apt_farm'  // Others
-  ];
-  
-  const protocols = allowedProtocols || defaultProtocols;
-  return protocols.includes(protocol.toLowerCase());
-};
-
-/**
- * Validate a transaction hash
- * @param {string} hash - Transaction hash to validate
- * @returns {boolean} Whether the hash is valid
- */
-export const isValidTransactionHash = (hash) => {
-  if (!hash) return false;
-  
-  // Transaction hash format: 0x followed by 64 hex characters
-  const hashPattern = /^0x[a-fA-F0-9]{64}$/;
-  return hashPattern.test(hash);
-};
-
-/**
- * Validate a contract address
- * @param {string} address - Contract address to validate
- * @returns {boolean} Whether the address is valid
- */
-export const isValidContractAddress = (address) => {
-  // Same format as wallet address for Aptos
-  return isValidAddress(address);
-};
-
-/**
- * Validate a date string
- * @param {string} dateStr - Date string to validate
- * @returns {boolean} Whether the date is valid
- */
-export const isValidDate = (dateStr) => {
-  if (!dateStr) return false;
-  
-  const date = new Date(dateStr);
-  return !isNaN(date.getTime());
-};
-
-/**
- * Validate a protocol operation type
- * @param {string} operationType - Operation type to validate
- * @returns {boolean} Whether the operation type is valid
- */
-export const isValidOperationType = (operationType) => {
-  if (!operationType) return false;
-  
-  const validOperations = [
-    'stake', 'unstake',
-    'lend', 'withdraw',
-    'addLiquidity', 'removeLiquidity',
-    'swap', 'deposit', 
-    'borrow', 'repay',
-    'mint', 'burn'
-  ];
-  
-  return validOperations.includes(operationType);
-};
-
-/**
- * Validate a recommendation form input
- * @param {Object} formData - Recommendation form data
- * @returns {Object} Validation result { isValid, errors }
+ * Validate recommendations form input
+ * @param {Object} formData - Form data to validate
+ * @returns {Object} Validation result with any errors
  */
 export const validateRecommendationForm = (formData) => {
   const errors = {};
   
   // Validate amount
   if (!formData.amount) {
-    errors.amount = 'Amount is required';
+    errors.amount = 'Investment amount is required';
   } else if (!isValidAmount(formData.amount, 0.1)) {
-    errors.amount = 'Amount must be at least 0.1 APT';
+    errors.amount = 'Investment amount must be at least 0.1';
   }
   
   // Validate risk profile
   if (!formData.riskProfile) {
     errors.riskProfile = 'Risk profile is required';
-  } else if (!isValidRiskProfile(formData.riskProfile)) {
-    errors.riskProfile = 'Invalid risk profile';
   }
   
-  // If walletAddress is provided, validate it
+  // Validate wallet address if provided
   if (formData.walletAddress && !isValidAddress(formData.walletAddress)) {
-    errors.walletAddress = 'Invalid wallet address';
+    errors.walletAddress = 'Invalid wallet address format';
+  }
+  
+  // Validate max protocols if provided
+  if (formData.maxProtocols && (!Number.isInteger(parseInt(formData.maxProtocols)) || parseInt(formData.maxProtocols) < 1)) {
+    errors.maxProtocols = 'Maximum protocols must be a positive integer';
   }
   
   return {
@@ -196,32 +63,32 @@ export const validateRecommendationForm = (formData) => {
 };
 
 /**
- * Validate auto-optimizer settings
- * @param {Object} settings - Auto-optimizer settings
- * @returns {Object} Validation result { isValid, errors }
+ * Validate optimizer settings
+ * @param {Object} settings - Settings to validate
+ * @returns {Object} Validation result with any errors
  */
 export const validateOptimizerSettings = (settings) => {
   const errors = {};
   
+  // Validate interval
+  if (settings.interval === undefined || settings.interval === null) {
+    errors.interval = 'Rebalance interval is required';
+  } else if (!Number.isInteger(parseInt(settings.interval)) || parseInt(settings.interval) < 1 || parseInt(settings.interval) > 168) {
+    errors.interval = 'Rebalance interval must be between 1 and 168 hours';
+  }
+  
   // Validate rebalance threshold
-  if (settings.rebalanceThreshold !== undefined) {
-    if (!isValidPercentage(settings.rebalanceThreshold, 0.5, 20)) {
-      errors.rebalanceThreshold = 'Threshold must be between 0.5% and 20%';
-    }
+  if (settings.rebalanceThreshold === undefined || settings.rebalanceThreshold === null) {
+    errors.rebalanceThreshold = 'Rebalance threshold is required';
+  } else if (!isValidAmount(settings.rebalanceThreshold, 0.5, 20)) {
+    errors.rebalanceThreshold = 'Rebalance threshold must be between 0.5% and 20%';
   }
   
   // Validate max slippage
-  if (settings.maxSlippage !== undefined) {
-    if (!isValidPercentage(settings.maxSlippage, 0.1, 5)) {
-      errors.maxSlippage = 'Slippage must be between 0.1% and 5%';
-    }
-  }
-  
-  // Validate interval
-  if (settings.interval !== undefined) {
-    if (!isValidAmount(settings.interval, 1, 168)) {
-      errors.interval = 'Interval must be between 1 and 168 hours';
-    }
+  if (settings.maxSlippage === undefined || settings.maxSlippage === null) {
+    errors.maxSlippage = 'Maximum slippage is required';
+  } else if (!isValidAmount(settings.maxSlippage, 0.1, 5)) {
+    errors.maxSlippage = 'Maximum slippage must be between 0.1% and 5%';
   }
   
   return {
@@ -231,17 +98,93 @@ export const validateOptimizerSettings = (settings) => {
 };
 
 /**
- * Validate a portfolio rebalance operation
- * @param {Object} operation - Rebalance operation
- * @returns {boolean} Whether the operation is valid
+ * Validate if a transaction payload is valid
+ * @param {Object} payload - Transaction payload
+ * @returns {boolean} Whether the payload is valid
  */
-export const isValidRebalanceOperation = (operation) => {
-  if (!operation) return false;
+export const isValidTransactionPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return false;
   
-  return (
-    isValidProtocol(operation.protocol) &&
-    isValidOperationType(operation.type) &&
-    isValidAmount(operation.amount) &&
-    isValidContractAddress(operation.contractAddress)
-  );
+  // Check required fields
+  if (!payload.function || typeof payload.function !== 'string') return false;
+  if (!Array.isArray(payload.type_arguments)) return false;
+  if (!Array.isArray(payload.arguments)) return false;
+  
+  return true;
+};
+
+/**
+ * Validate if an email is valid
+ * @param {string} email - Email to validate
+ * @returns {boolean} Whether the email is valid
+ */
+export const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  
+  // Use basic regex for email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * Sanitize input to prevent XSS attacks
+ * @param {string} input - Input to sanitize
+ * @returns {string} Sanitized input
+ */
+export const sanitizeInput = (input) => {
+  if (!input || typeof input !== 'string') return '';
+  
+  return input
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
+/**
+ * Validate password strength
+ * @param {string} password - Password to validate
+ * @returns {Object} Validation result with strength score and feedback
+ */
+export const validatePasswordStrength = (password) => {
+  if (!password || typeof password !== 'string') {
+    return { score: 0, feedback: 'Password is required' };
+  }
+  
+  let score = 0;
+  const feedback = [];
+  
+  // Length check
+  if (password.length < 8) {
+    feedback.push('Password should be at least 8 characters long');
+  } else {
+    score += 1;
+  }
+  
+  // Complexity checks
+  if (/[A-Z]/.test(password)) score += 1;
+  if (/[a-z]/.test(password)) score += 1;
+  if (/[0-9]/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+  
+  if (score < 3) {
+    feedback.push('Password should include uppercase, lowercase, numbers, and special characters');
+  }
+  
+  return {
+    score,
+    feedback: feedback.join('. '),
+    isStrong: score >= 3 && password.length >= 8
+  };
+};
+
+export default {
+  isValidAddress,
+  isValidAmount,
+  validateRecommendationForm,
+  validateOptimizerSettings,
+  isValidTransactionPayload,
+  isValidEmail,
+  sanitizeInput,
+  validatePasswordStrength
 };

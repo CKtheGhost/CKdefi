@@ -1,19 +1,21 @@
 // useRecommendations.js - Hook for AI-powered investment recommendations
 import { useState, useEffect, useCallback, useContext } from 'react';
-import { useWallet } from './useWallet';
+import { useWalletContext } from './useWallet';
 import { usePortfolio } from './usePortfolio';
 import { NotificationContext } from '../context/NotificationContext';
 import { TransactionContext } from '../context/TransactionContext';
 import api from '../services/api';
+import { showToast } from '../utils/animations';
+import { trackRecommendation } from '../utils/analyticsUtils';
 
 /**
  * Hook for working with AI-powered investment recommendations
  */
 const useRecommendations = () => {
-  const { walletAddress } = useWalletContext();
+  const { address } = useWalletContext();
   const { totalValue, portfolioData } = usePortfolio();
   const { showNotification } = useContext(NotificationContext);
-  const { executeStrategy } = useContext(TransactionContext);
+  const { executeStrategy: executeStrategyTx } = useContext(TransactionContext);
   
   // Recommendation states
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +46,21 @@ const useRecommendations = () => {
     }
   }, [totalValue, amount]);
   
+  // Load recommendation history from localStorage
+  useEffect(() => {
+    try {
+      const storedHistory = localStorage.getItem('aiRecommendationsHistory');
+      if (storedHistory) {
+        const parsedHistory = JSON.parse(storedHistory);
+        if (Array.isArray(parsedHistory)) {
+          setRecommendationHistory(parsedHistory);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load recommendation history:', err);
+    }
+  }, []);
+  
   /**
    * Generate a new AI recommendation based on current settings
    */
@@ -67,8 +84,8 @@ const useRecommendations = () => {
       };
       
       // Add wallet address if available
-      if (walletAddress) {
-        params.walletAddress = walletAddress;
+      if (address) {
+        params.walletAddress = address;
       }
       
       // Add optional parameters
@@ -84,8 +101,15 @@ const useRecommendations = () => {
         params.preferredProtocols = options.preferredProtocols.join(',');
       }
       
+      // Show notification
+      showToast({
+        message: 'Generating AI recommendation...',
+        type: 'info',
+        duration: 3000
+      });
+      
       // Request recommendation from API
-      const response = await api.get('/recommendations/ai', { params });
+      const response = await api.get('/api/recommendations/ai', { params });
       const newRecommendation = response.data;
       
       // Update state
@@ -98,28 +122,37 @@ const useRecommendations = () => {
       localStorage.setItem('lastInvestmentAmount', amountToUse.toString());
       localStorage.setItem('defaultRiskProfile', riskProfileToUse);
       
-      // Dispatch event for tracking
-      window.dispatchEvent(new CustomEvent('aiRecommendationDisplayed', { 
-        detail: { recommendation: newRecommendation } 
-      }));
+      // Show success notification
+      showToast({
+        message: 'AI recommendation generated successfully',
+        type: 'success',
+        duration: 3000
+      });
+      
+      // Track recommendation
+      trackRecommendation(riskProfileToUse, amountToUse, true);
       
       return newRecommendation;
     } catch (err) {
       console.error('Error generating recommendation:', err);
       setError(err.response?.data?.error || 'Failed to generate recommendation');
       
-      showNotification({
+      // Show error notification
+      showToast({
+        message: `Failed to generate recommendation: ${err.response?.data?.error || err.message || 'Unknown error'}`,
         type: 'error',
-        title: 'Recommendation Failed',
-        message: err.response?.data?.error || 'Failed to generate AI recommendation'
+        duration: 5000
       });
+      
+      // Track failed recommendation
+      trackRecommendation(riskProfileToUse, amountToUse, false);
       
       return null;
     } finally {
       setIsLoading(false);
       setGeneratingRecommendation(false);
     }
-  }, [amount, riskProfile, preserveStakedPositions, walletAddress, showNotification]);
+  }, [amount, riskProfile, preserveStakedPositions, address, showNotification]);
   
   /**
    * Add recommendation to history
@@ -164,10 +197,10 @@ const useRecommendations = () => {
    */
   const executeRecommendation = useCallback(async (recommendationToExecute = recommendation) => {
     if (!recommendationToExecute) {
-      showNotification({
+      showToast({
+        message: 'No recommendation to execute',
         type: 'error',
-        title: 'Execution Failed',
-        message: 'No recommendation to execute'
+        duration: 3000
       });
       return null;
     }
@@ -183,28 +216,36 @@ const useRecommendations = () => {
         throw new Error('No valid operations could be prepared from the recommendation');
       }
       
-      // Request confirmation from the user
-      const confirmMessage = `Execute ${operations.length} operations to implement this strategy?`;
-      
-      if (!window.confirm(confirmMessage)) {
-        setExecutingRecommendation(false);
-        return { success: false, message: 'Execution cancelled by user' };
-      }
+      // Show info notification
+      showToast({
+        message: 'Preparing to execute strategy...',
+        type: 'info',
+        duration: 3000
+      });
       
       // Execute the strategy
-      const result = await executeStrategy(operations);
+      const result = await executeStrategyTx(operations);
       
       // Update state with result
       setExecutionResult(result);
       
-      // Show notification
-      showNotification({
-        type: result.success ? 'success' : 'warning',
-        title: result.success ? 'Strategy Executed' : 'Execution Issues',
+      // Show success notification
+      showToast({
         message: result.success ? 
           `Strategy executed successfully! ${result.operations?.length || 0} operations completed.` : 
-          `Strategy executed with ${result.failedOperations?.length || 0} failures.`
+          `Strategy executed with ${result.failedOperations?.length || 0} failures.`,
+        type: result.success ? 'success' : 'warning',
+        duration: 5000
       });
+      
+      // Update recommendation with execution result
+      const updatedRecommendation = {
+        ...recommendationToExecute,
+        executionResult: result
+      };
+      
+      // Update in history
+      addToRecommendationHistory(updatedRecommendation);
       
       return result;
     } catch (err) {
@@ -218,17 +259,17 @@ const useRecommendations = () => {
       });
       
       // Show error notification
-      showNotification({
+      showToast({
+        message: `Strategy execution failed: ${err.message}`,
         type: 'error',
-        title: 'Execution Failed',
-        message: `Error: ${err.message}`
+        duration: 5000
       });
       
       return { success: false, error: err.message };
     } finally {
       setExecutingRecommendation(false);
     }
-  }, [recommendation, executeStrategy, showNotification]);
+  }, [recommendation, executeStrategyTx, showNotification, addToRecommendationHistory]);
   
   /**
    * Prepare operations from recommendation for execution
@@ -238,7 +279,7 @@ const useRecommendations = () => {
       return [];
     }
     
-    // Get contract addresses from global or context
+    // Get contract addresses from constants.js
     const contractAddresses = window.contractAddresses || {
       amnis: "0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a",
       thala: "0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6",
@@ -251,7 +292,7 @@ const useRecommendations = () => {
       cetus: "0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6"
     };
     
-    return recommendationData.allocation.map(item => {
+    const operations = recommendationData.allocation.map(item => {
       // Determine operation type
       const type = determineOperationType(item.product);
       
@@ -266,24 +307,26 @@ const useRecommendations = () => {
       }
       
       // Calculate amount if not explicitly provided
-      const amount = item.amount || 
+      const calculatedAmount = item.amount || 
         ((parseFloat(recommendationData.totalInvestment || amount) * parseFloat(item.percentage || 0) / 100).toFixed(2));
       
       // Skip if amount is invalid
-      if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-        console.warn(`Invalid amount for ${item.protocol}: ${amount}`);
+      if (isNaN(parseFloat(calculatedAmount)) || parseFloat(calculatedAmount) <= 0) {
+        console.warn(`Invalid amount for ${item.protocol}: ${calculatedAmount}`);
         return null;
       }
       
       return {
         protocol: item.protocol,
         type,
-        amount,
+        amount: calculatedAmount,
         contractAddress,
         functionName: determineFunctionName(item.protocol, type),
         expectedApr: parseFloat(item.expectedApr || 0)
       };
     }).filter(Boolean); // Remove null items
+    
+    return operations;
   }, [amount]);
   
   /**
@@ -437,35 +480,6 @@ const useRecommendations = () => {
     
     return result;
   }, []);
-  
-  /**
-   * Load stored recommendation history on mount
-   */
-  useEffect(() => {
-    try {
-      const storedHistory = localStorage.getItem('aiRecommendationsHistory');
-      if (storedHistory) {
-        const parsedHistory = JSON.parse(storedHistory);
-        if (Array.isArray(parsedHistory)) {
-          setRecommendationHistory(parsedHistory);
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to load recommendation history from localStorage:', err);
-    }
-  }, []);
-  
-  /**
-   * Update amount input when portfolio data changes
-   */
-  useEffect(() => {
-    if (portfolioData && !amount) {
-      const totalValue = portfolioData.totalValueUSD || 0;
-      if (totalValue > 0) {
-        setAmount(Math.floor(totalValue));
-      }
-    }
-  }, [portfolioData, amount]);
   
   return {
     // States

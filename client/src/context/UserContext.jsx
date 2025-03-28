@@ -1,106 +1,94 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+// Nexus-level UserContext.jsx
+// Original user preference logic with robust logging, error handling,
+// plus an easy approach to login/logout and preference management.
 
-// Define user preference keys
+import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
+
 export const USER_PREFERENCES = {
   RISK_PROFILE: 'riskProfile',
   AUTO_REBALANCE: 'autoRebalance',
   REBALANCE_THRESHOLD: 'rebalanceThreshold',
   NOTIFICATION_PREFERENCES: 'notificationPreferences',
   DASHBOARD_LAYOUT: 'dashboardLayout',
-  DATA_VIEW: 'dataView'
+  DATA_VIEW: 'dataView',
 };
 
-// Define default values
 const DEFAULT_PREFERENCES = {
-  [USER_PREFERENCES.RISK_PROFILE]: 'balanced', // conservative, balanced, aggressive
+  [USER_PREFERENCES.RISK_PROFILE]: 'balanced',
   [USER_PREFERENCES.AUTO_REBALANCE]: false,
-  [USER_PREFERENCES.REBALANCE_THRESHOLD]: 5, // Percentage threshold to trigger rebalance
+  [USER_PREFERENCES.REBALANCE_THRESHOLD]: 5,
   [USER_PREFERENCES.NOTIFICATION_PREFERENCES]: {
     transactions: true,
     priceAlerts: true,
     newsletterUpdates: false,
-    securityAlerts: true
+    securityAlerts: true,
   },
   [USER_PREFERENCES.DASHBOARD_LAYOUT]: 'default',
-  [USER_PREFERENCES.DATA_VIEW]: 'chart' // chart or table
+  [USER_PREFERENCES.DATA_VIEW]: 'chart',
 };
 
-// Create the context
 export const UserContext = createContext(null);
 
 export const UserProvider = ({ children }) => {
-  // User profile state
   const [userProfile, setUserProfile] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  
-  // User preferences
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
-  
-  // Transaction history
   const [transactionHistory, setTransactionHistory] = useState([]);
-  
-  // Strategy history
   const [strategyHistory, setStrategyHistory] = useState([]);
 
-  // Load user data from localStorage on mount
+  // On mount, load data from localStorage
   useEffect(() => {
-    // Load user preferences
-    const storedPreferences = localStorage.getItem('userPreferences');
-    if (storedPreferences) {
-      try {
-        const parsedPreferences = JSON.parse(storedPreferences);
-        setPreferences(prev => ({
-          ...prev,
-          ...parsedPreferences
-        }));
-      } catch (error) {
-        console.error('Error parsing user preferences:', error);
+    try {
+      const storedPrefs = localStorage.getItem('userPreferences');
+      if (storedPrefs) {
+        const parsed = JSON.parse(storedPrefs);
+        setPreferences((prev) => ({ ...prev, ...parsed }));
       }
+    } catch (err) {
+      console.error('[UserContext] Error parsing user preferences:', err);
     }
-    
-    // Load transaction history
-    const storedTransactionHistory = localStorage.getItem('transactionHistory');
-    if (storedTransactionHistory) {
-      try {
-        setTransactionHistory(JSON.parse(storedTransactionHistory));
-      } catch (error) {
-        console.error('Error parsing transaction history:', error);
+
+    try {
+      const storedTxs = localStorage.getItem('transactionHistory');
+      if (storedTxs) {
+        setTransactionHistory(JSON.parse(storedTxs));
       }
+    } catch (err) {
+      console.error('[UserContext] Error parsing transaction history:', err);
     }
-    
-    // Load strategy history
-    const storedStrategyHistory = localStorage.getItem('strategyHistory');
-    if (storedStrategyHistory) {
-      try {
-        setStrategyHistory(JSON.parse(storedStrategyHistory));
-      } catch (error) {
-        console.error('Error parsing strategy history:', error);
+
+    try {
+      const storedStrategies = localStorage.getItem('strategyHistory');
+      if (storedStrategies) {
+        setStrategyHistory(JSON.parse(storedStrategies));
       }
+    } catch (err) {
+      console.error('[UserContext] Error parsing strategy history:', err);
     }
-    
-    // Check for logged in user
-    const storedUserProfile = localStorage.getItem('userProfile');
-    if (storedUserProfile) {
-      try {
-        setUserProfile(JSON.parse(storedUserProfile));
+
+    try {
+      const storedProfile = localStorage.getItem('userProfile');
+      if (storedProfile) {
+        const parsedProf = JSON.parse(storedProfile);
+        setUserProfile(parsedProf);
         setIsLoggedIn(true);
-      } catch (error) {
-        console.error('Error parsing user profile:', error);
       }
+    } catch (err) {
+      console.error('[UserContext] Error parsing user profile:', err);
     }
   }, []);
 
-  // Save preferences to localStorage whenever they change
+  // Persist preferences
   useEffect(() => {
     localStorage.setItem('userPreferences', JSON.stringify(preferences));
   }, [preferences]);
 
-  // Save transaction history to localStorage whenever it changes
+  // Persist transaction history
   useEffect(() => {
     localStorage.setItem('transactionHistory', JSON.stringify(transactionHistory));
   }, [transactionHistory]);
 
-  // Save strategy history to localStorage whenever it changes
+  // Persist strategy history
   useEffect(() => {
     localStorage.setItem('strategyHistory', JSON.stringify(strategyHistory));
   }, [strategyHistory]);
@@ -108,81 +96,56 @@ export const UserProvider = ({ children }) => {
   // Update a single preference
   const updatePreference = useCallback((key, value) => {
     if (Object.values(USER_PREFERENCES).includes(key)) {
-      setPreferences(prev => ({
-        ...prev,
-        [key]: value
-      }));
+      setPreferences((prev) => ({ ...prev, [key]: value }));
+    } else {
+      console.warn(`[UserContext] Attempted to update unknown preference key: ${key}`);
     }
   }, []);
 
-  // Reset preferences to defaults
+  // Reset all preferences to defaults
   const resetPreferences = useCallback(() => {
     setPreferences(DEFAULT_PREFERENCES);
   }, []);
 
-  // Add a transaction to history
-  const addTransaction = useCallback((transaction) => {
-    setTransactionHistory(prev => {
-      // Add transaction with timestamp
-      const txWithTimestamp = {
-        ...transaction,
-        timestamp: transaction.timestamp || Date.now()
-      };
-      
-      // Limit history to most recent 100 transactions
-      return [txWithTimestamp, ...prev].slice(0, 100);
-    });
+  // Add a new transaction
+  const addTransaction = useCallback((tx) => {
+    const withTime = { ...tx, timestamp: tx.timestamp || Date.now() };
+    setTransactionHistory((prev) => [withTime, ...prev].slice(0, 100));
   }, []);
 
-  // Clear transaction history
+  // Clear all transaction history
   const clearTransactionHistory = useCallback(() => {
     setTransactionHistory([]);
   }, []);
 
-  // Add a strategy to history
+  // Add a new strategy
   const addStrategy = useCallback((strategy) => {
-    setStrategyHistory(prev => {
-      // Add strategy with timestamp
-      const strategyWithTimestamp = {
-        ...strategy,
-        timestamp: strategy.timestamp || Date.now()
-      };
-      
-      // Limit history to most recent 50 strategies
-      return [strategyWithTimestamp, ...prev].slice(0, 50);
-    });
+    const withTime = { ...strategy, timestamp: strategy.timestamp || Date.now() };
+    setStrategyHistory((prev) => [withTime, ...prev].slice(0, 50));
   }, []);
 
-  // Clear strategy history
+  // Clear all strategy history
   const clearStrategyHistory = useCallback(() => {
     setStrategyHistory([]);
   }, []);
 
-  // Login user
-  const login = useCallback(async (credentials) => {
+  // Mock login
+  const login = useCallback(async (creds) => {
     try {
-      // In a real app, this would make an API call
-      // This is a simplified mock for now
+      // In a real setup: call backend
       const mockProfile = {
         id: 'user-123',
-        email: credentials.email,
+        email: creds.email,
         name: 'Demo User',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
-      
       setUserProfile(mockProfile);
       setIsLoggedIn(true);
-      
-      // Save to localStorage
       localStorage.setItem('userProfile', JSON.stringify(mockProfile));
-      
       return { success: true };
-    } catch (error) {
-      console.error('Login error:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Failed to login'
-      };
+    } catch (err) {
+      console.error('[UserContext] Login error:', err);
+      return { success: false, error: err.message || 'Login failed' };
     }
   }, []);
 
@@ -190,55 +153,43 @@ export const UserProvider = ({ children }) => {
   const logout = useCallback(() => {
     setUserProfile(null);
     setIsLoggedIn(false);
-    
-    // Remove from localStorage
     localStorage.removeItem('userProfile');
   }, []);
 
-  // Context value
   const value = {
-    // User authentication
     userProfile,
     isLoggedIn,
     login,
     logout,
-    
-    // User preferences
+
     preferences,
     updatePreference,
     resetPreferences,
-    
-    // Transaction history
+
     transactionHistory,
     addTransaction,
     clearTransactionHistory,
-    
-    // Strategy history
+
     strategyHistory,
     addStrategy,
     clearStrategyHistory,
-    
-    // User preference getters (convenience methods)
+
     getRiskProfile: () => preferences[USER_PREFERENCES.RISK_PROFILE],
     isAutoRebalanceEnabled: () => preferences[USER_PREFERENCES.AUTO_REBALANCE],
     getRebalanceThreshold: () => preferences[USER_PREFERENCES.REBALANCE_THRESHOLD],
     getNotificationSettings: () => preferences[USER_PREFERENCES.NOTIFICATION_PREFERENCES],
     getDashboardLayout: () => preferences[USER_PREFERENCES.DASHBOARD_LAYOUT],
-    getDataViewPreference: () => preferences[USER_PREFERENCES.DATA_VIEW]
+    getDataViewPreference: () => preferences[USER_PREFERENCES.DATA_VIEW],
   };
 
-  return (
-    <UserContext.Provider value={value}>
-      {children}
-    </UserContext.Provider>
-  );
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 };
 
-// Custom hook to use the user context
+// Custom hook
 export const useUser = () => {
-  const context = React.useContext(UserContext);
-  if (context === null) {
-    throw new Error('useUser must be used within a UserProvider');
+  const ctx = useContext(UserContext);
+  if (!ctx) {
+    throw new Error('[useUser] must be used within a UserProvider');
   }
-  return context;
+  return ctx;
 };

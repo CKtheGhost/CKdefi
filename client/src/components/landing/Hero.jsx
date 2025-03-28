@@ -3,10 +3,7 @@ import { Link } from 'react-router-dom';
 import Button from '../common/Button';
 import WalletConnect from '../common/WalletConnect';
 
-/**
- * Hero component for the landing page
- */
-const Hero = () => {
+const Hero = ({ onGetStarted, topYield }) => {
   return (
     <div className="relative overflow-hidden">
       {/* Background elements */}
@@ -44,10 +41,7 @@ const Hero = () => {
                 variant="ghost"
                 size="lg"
                 className="border border-blue-500/50"
-                onClick={() => {
-                  const element = document.getElementById('features');
-                  element?.scrollIntoView({ behavior: 'smooth' });
-                }}
+                onClick={onGetStarted}
               >
                 Learn More
               </Button>
@@ -56,10 +50,10 @@ const Hero = () => {
             <div className="mt-8 flex items-center">
               <p className="text-gray-400 text-sm mr-4">Supported protocols:</p>
               <div className="flex -space-x-2">
-                <img src="/protocols/amnis.png" alt="Amnis" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
-                <img src="/protocols/thala.png" alt="Thala" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
-                <img src="/protocols/tortuga.png" alt="Tortuga" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
-                <img src="/protocols/aries.png" alt="Aries" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
+                <img src="/assets/images/protocols/amnis.png" alt="Amnis" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
+                <img src="/assets/images/protocols/thala.png" alt="Thala" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
+                <img src="/assets/images/protocols/tortuga.png" alt="Tortuga" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
+                <img src="/assets/images/protocols/aries.png" alt="Aries" className="w-8 h-8 rounded-full bg-gray-800 p-1" />
                 <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-xs">+12</div>
               </div>
             </div>
@@ -70,7 +64,7 @@ const Hero = () => {
               {/* Dashboard preview */}
               <div className="rounded-xl overflow-hidden shadow-2xl border border-gray-800">
                 <img 
-                  src="/images/dashboard-preview.png" 
+                  src="/assets/images/dashboard-preview.png" 
                   alt="CompounDefi Dashboard" 
                   className="w-full"
                   onError={(e) => {
@@ -94,11 +88,11 @@ const Hero = () => {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-gray-400">Current APY</p>
-                    <p className="text-green-400 font-bold">8.75%</p>
+                    <p className="text-green-400 font-bold">{(topYield || 7.5).toFixed(2)}%</p>
                   </div>
                   <div>
                     <p className="text-gray-400">Optimized APY</p>
-                    <p className="text-green-400 font-bold">12.42%</p>
+                    <p className="text-green-400 font-bold">{(topYield * 1.4 || 10.5).toFixed(2)}%</p>
                   </div>
                 </div>
               </div>
@@ -107,7 +101,7 @@ const Hero = () => {
               <div className="absolute -top-4 -right-4 bg-blue-900/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-xl border border-blue-700">
                 <div className="flex items-center">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                   <span className="font-bold text-blue-400">AI-Powered</span>
                 </div>

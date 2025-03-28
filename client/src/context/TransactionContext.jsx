@@ -1,183 +1,266 @@
-import React, { createContext, useState, useCallback, useContext } from 'react';
+// src/context/TransactionContext.jsx
+
+import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import { useWalletContext } from './WalletContext';
+import { executeStrategy, executeTransaction } from '../services/transactionService';
+import { showNotification } from '../utils/animations';
 import { useNotification } from './NotificationContext';
 
-// Transaction statuses
-export const TRANSACTION_STATUS = {
-  PENDING: 'pending',
-  CONFIRMING: 'confirming',
-  CONFIRMED: 'confirmed',
-  FAILED: 'failed',
-  REJECTED: 'rejected'
-};
-
-// Transaction types
-export const TRANSACTION_TYPES = {
-  STAKE: 'stake',
-  UNSTAKE: 'unstake',
-  SWAP: 'swap',
-  DEPOSIT: 'deposit',
-  WITHDRAW: 'withdraw',
-  CLAIM: 'claim',
-  REBALANCE: 'rebalance',
-  APPROVE: 'approve',
-  TRANSFER: 'transfer',
-  OTHER: 'other'
-};
-
 // Create the context
-export const TransactionContext = createContext(null);
+export const TransactionContext = createContext({});
 
-export const TransactionProvider = ({ children }) => {
-  const { executeTransaction, connected, walletAddress } = useWalletContext();
-  const { success, error, info } = useNotification();
-  
-  // Transaction state
-  const [pendingTransactions, setPendingTransactions] = useState([]);
-  const [currentTransaction, setCurrentTransaction] = useState(null);
-  const [transactionLoading, setTransactionLoading] = useState(false);
-  const [transactionError, setTransactionError] = useState(null);
-  
-  // Store for tracking multiple transactions by ID
-  const [transactionStore, setTransactionStore] = useState({});
+import { useNotification } from './NotificationContext';
+    });
+  }, []);
 
-  // Execute a transaction with tracking
-  const executeTransactionWithTracking = useCallback(async (transactionData) => {
-    if (!connected) {
-      error('Wallet not connected. Please connect your wallet to continue.');
-      return { success: false, error: 'Wallet not connected' };
+  // Execute a transaction
+  const executeTransactionWithState = useCallback(async (payload, options = {}) => {
+    if (!isConnected || !wallet) {
+      throw new Error('Wallet not connected');
     }
+
+    setIsLoading(true);
+    setError(null);
     
     try {
-      setTransactionLoading(true);
-      setTransactionError(null);
-      
-      // Create transaction object
-      const txId = `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const newTransaction = {
-        id: txId,
-        type: transactionData.type || TRANSACTION_TYPES.OTHER,
-        description: transactionData.description || 'Transaction',
-        amount: transactionData.amount,
-        token: transactionData.token,
-        status: TRANSACTION_STATUS.PENDING,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        payload: transactionData.payload,
-        protocol: transactionData.protocol,
-        walletAddress
+      // Add to pending transactions
+      const pendingTx = {
+        id: Date.now().toString(),
+        type: payload.type || 'transaction',
+        status: 'pending',
+        timestamp: new Date().toISOString(),
+        payload
       };
       
-      // Add to pending transactions
-      setPendingTransactions(prev => [...prev, newTransaction]);
-      setCurrentTransaction(newTransaction);
-      
-      // Add to transaction store
-      setTransactionStore(prev => ({
-        ...prev,
-        [txId]: newTransaction
-      }));
-      
-      // Show notification
-      info('Preparing transaction: ' + newTransaction.description, {
-        title: 'Transaction Initiated'
-      });
+      setPendingTransactions(prev => [pendingTx, ...prev]);
+      setCurrentTransaction(pendingTx);
       
       // Execute the transaction
-      const result = await executeTransaction(transactionData.payload);
-      
-      // Update transaction status
-      const updatedTransaction = {
-        ...newTransaction,
-        status: result.success ? TRANSACTION_STATUS.CONFIRMED : TRANSACTION_STATUS.FAILED,
-        hash: result.result?.hash,
-        error: result.error,
-        updatedAt: Date.now(),
-        result: result.result
-      };
-      
-      // Update pending transactions
-      setPendingTransactions(prev => 
-        prev.map(tx => tx.id === txId ? updatedTransaction : tx)
+      const result = await executeTransaction(
+        wallet,
+        payload,
+        options
       );
       
-      // Update transaction store
-      setTransactionStore(prev => ({
-        ...prev,
-        [txId]: updatedTransaction
-      }));
+      // Update the transaction status
+      const completedTx = {
+        ...pendingTx,
+        status: result.success ? 'success' : 'failed',
+        result,
+        error: result.error
+      };
       
-      setCurrentTransaction(updatedTransaction);
+      setPendingTransactions(prev => 
+        prev.filter(tx => tx.id !== pendingTx.id)
+      );
       
-      // Show success/error notification
+      // Add to history
+      addTransaction(completedTx);
+      
+      // Clear current transaction
+      setCurrentTransaction(null);
+      
+      // Show notification
       if (result.success) {
-        success('Transaction complete: ' + updatedTransaction.description, {
-          title: 'Transaction Confirmed',
-          autoDismiss: 7000
-        });
+        showNotification('Transaction successful!', 'success');
       } else {
-        error('Transaction failed: ' + (result.error || 'Unknown error'), {
-          title: 'Transaction Failed',
-          autoDismiss: 0
-        });
+        showNotification(`Transaction failed: ${result.error}`, 'error');
       }
       
-      return {
-        ...result,
-        transaction: updatedTransaction
-      };
+      // Refresh portfolio after successful transaction
+      if (result.success) {
+        setTimeout(() => refreshPortfolio(), 2000);
+      }
+      
+      return result;
     } catch (err) {
-      // Handle any errors
-      setTransactionError(err.message || 'Transaction failed');
+      console.error('Transaction execution error:', err);
+      setError(err.message || 'Transaction failed');
       
-      error('Transaction error: ' + (err.message || 'Unknown error'), {
-        title: 'Transaction Error',
-        autoDismiss: 0
-      });
-      
-      return {
-        success: false,
-        error: err.message || 'Transaction failed'
+      // Add failed transaction to history
+      const failedTx = {
+        id: Date.now().toString(),
+        type: payload.type || 'transaction',
+        status: 'failed',
+        timestamp: new Date().toISOString(),
+        payload,
+        error: err.message
       };
+      
+      addTransaction(failedTx);
+      
+      // Clear from pending
+      setPendingTransactions(prev => 
+        prev.filter(tx => tx.id !== (currentTransaction?.id || ''))
+      );
+      
+      // Clear current transaction
+      setCurrentTransaction(null);
+      
+      // Show notification
+      showNotification(err.message || 'Transaction failed', 'error');
+      
+      throw err;
     } finally {
-      setTransactionLoading(false);
+      setIsLoading(false);
     }
-  }, [connected, walletAddress, executeTransaction, success, error, info]);
+  }, [isConnected, wallet, addTransaction, refreshPortfolio]);
 
-  // Get transaction by ID
-  const getTransaction = useCallback((transactionId) => {
-    return transactionStore[transactionId] || null;
-  }, [transactionStore]);
+  // Execute a strategy (multiple transactions)
+  const executeStrategyWithState = useCallback(async (operations, options = {}, onProgress = null) => {
+    if (!isConnected || !wallet) {
+      throw new Error('Wallet not connected');
+    }
 
-  // Check if a transaction is pending
-  const isTransactionPending = useCallback((transactionId) => {
-    const transaction = transactionStore[transactionId];
-    return transaction && transaction.status === TRANSACTION_STATUS.PENDING;
-  }, [transactionStore]);
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Create strategy transaction record
+      const strategyTx = {
+        id: Date.now().toString(),
+        type: 'strategy',
+        status: 'pending',
+        timestamp: new Date().toISOString(),
+        operations,
+        progress: 0
+      };
+      
+      setPendingTransactions(prev => [strategyTx, ...prev]);
+      setCurrentTransaction(strategyTx);
+      
+      // Progress callback
+      const handleProgress = (index, result) => {
+        // Update progress
+        const progress = Math.round(((index + 1) / operations.length) * 100);
+        
+        // Update pending transaction
+        setPendingTransactions(prev => {
+          return prev.map(tx => {
+            if (tx.id === strategyTx.id) {
+              return { ...tx, progress };
+            }
+            return tx;
+          });
+        });
+        
+        // Update current transaction
+        setCurrentTransaction(prev => {
+          if (prev && prev.id === strategyTx.id) {
+            return { ...prev, progress };
+          }
+          return prev;
+        });
+        
+        // Call external progress handler if provided
+        if (onProgress) {
+          onProgress(index, result, progress);
+        }
+      };
+      
+      // Execute the strategy
+      const result = await executeStrategy(
+        wallet,
+        operations,
+        options,
+        handleProgress
+      );
+      
+      // Update the transaction status
+      const completedStrategy = {
+        ...strategyTx,
+        status: result.success ? 'success' : result.operations.length > 0 ? 'partial' : 'failed',
+        result,
+        error: result.error,
+        operations: result.operations,
+        failedOperations: result.failedOperations,
+        progress: 100
+      };
+      
+      // Remove from pending
+      setPendingTransactions(prev => 
+        prev.filter(tx => tx.id !== strategyTx.id)
+      );
+      
+      // Add to history
+      addTransaction(completedStrategy);
+      
+      // Clear current transaction
+      setCurrentTransaction(null);
+      
+      // Show notification
+      if (result.success) {
+        showNotification(`Strategy executed successfully with ${result.operations.length} operations!`, 'success');
+      } else if (result.operations.length > 0) {
+        showNotification(`Strategy partially executed with ${result.failedOperations.length} failures`, 'warning');
+      } else {
+        showNotification(`Strategy execution failed: ${result.error}`, 'error');
+      }
+      
+      // Refresh portfolio after execution
+      setTimeout(() => refreshPortfolio(), 2000);
+      
+      return result;
+    } catch (err) {
+      console.error('Strategy execution error:', err);
+      setError(err.message || 'Strategy execution failed');
+      
+      // Add failed strategy to history
+      const failedStrategy = {
+        id: Date.now().toString(),
+        type: 'strategy',
+        status: 'failed',
+        timestamp: new Date().toISOString(),
+        operations,
+        error: err.message
+      };
+      
+      addTransaction(failedStrategy);
+      
+      // Remove from pending
+      setPendingTransactions(prev => 
+        prev.filter(tx => tx.id !== (currentTransaction?.id || ''))
+      );
+      
+      // Clear current transaction
+      setCurrentTransaction(null);
+      
+      // Show notification
+      showNotification(err.message || 'Strategy execution failed', 'error');
+      
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isConnected, wallet, addTransaction, refreshPortfolio]);
+
+  // Clear transaction history
+  const clearHistory = useCallback(() => {
+    setTransactionHistory([]);
+    localStorage.removeItem('transactionHistory');
+  }, []);
 
   // Context value
-  const value = {
+  const contextValue = {
     pendingTransactions,
+    transactionHistory,
+    isLoading,
     currentTransaction,
-    transactionLoading,
-    transactionError,
-    executeTransactionWithTracking,
-    getTransaction,
-    isTransactionPending
+    error,
+    executeTransaction: executeTransactionWithState,
+    executeStrategyTransaction: executeStrategyWithState,
+    addTransaction,
+    clearHistory
   };
 
   return (
-    <TransactionContext.Provider value={value}>
+    <TransactionContext.Provider value={contextValue}>
       {children}
     </TransactionContext.Provider>
   );
-};
+}
 
-// Custom hook to use the transaction context
-export const useTransaction = () => {
-  const context = useContext(TransactionContext);
-  if (context === null) {
-    throw new Error('useTransaction must be used within a TransactionProvider');
-  }
-  return context;
-};
+// Custom hook to use the TransactionContext
+export const useTransactionContext = () => useContext(TransactionContext);
+
+export default TransactionContext;

@@ -1,26 +1,11 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../context/DataContext';
+import React, { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import Card from '../common/Card';
-import Button from '../common/Button';
-import { formatNumber } from '../../utils/formatters';
 
-const RecommendationHistory = ({ onSelectRecommendation }) => {
-  const { recommendationHistory, loadRecommendationHistory } = useContext(DataContext);
+const RecommendationHistory = ({ recommendations = [], onSelect }) => {
   const [expandedItem, setExpandedItem] = useState(null);
-  
-  useEffect(() => {
-    loadRecommendationHistory();
-  }, [loadRecommendationHistory]);
-  
-  const handleSelect = (recommendation) => {
-    if (onSelectRecommendation) {
-      onSelectRecommendation(recommendation);
-    }
-  };
-  
-  // If no history, show empty state
-  if (!recommendationHistory || recommendationHistory.length === 0) {
+
+  if (!recommendations || recommendations.length === 0) {
     return (
       <Card className="bg-gray-800 border border-gray-700">
         <div className="p-6 text-center">
@@ -35,26 +20,48 @@ const RecommendationHistory = ({ onSelectRecommendation }) => {
       </Card>
     );
   }
-  
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'Recently';
+    
+    try {
+      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return 'Recently';
+    }
+  };
+
+  const handleExpand = (index) => {
+    setExpandedItem(expandedItem === index ? null : index);
+  };
+
+  const handleSelect = (recommendation) => {
+    if (onSelect) {
+      onSelect(recommendation);
+    }
+  };
+
   return (
     <Card className="bg-gray-800 border border-gray-700">
       <div className="p-4">
-        <h2 className="text-xl font-bold mb-4">Recommendation History</h2>
+        <h2 className="text-xl font-bold text-white mb-4">Recommendation History</h2>
         
         <div className="space-y-3">
-          {recommendationHistory.map((recommendation, index) => (
+          {recommendations.map((recommendation, index) => (
             <div 
               key={index} 
               className="p-3 bg-gray-700 rounded-lg transition-all hover:bg-gray-650"
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-medium text-white">{recommendation.title || 'Investment Strategy'}</h3>
+                  <h3 className="font-medium text-white">
+                    {recommendation.title || (recommendation.riskProfile ? 
+                      `${recommendation.riskProfile.charAt(0).toUpperCase() + recommendation.riskProfile.slice(1)} Strategy` : 
+                      'Investment Strategy')}
+                  </h3>
                   <div className="text-xs text-gray-400 mt-1">
-                    {recommendation.timestamp ? 
-                      formatDistanceToNow(new Date(recommendation.timestamp), { addSuffix: true }) : 
-                      'Recently'
-                    }
+                    {formatTimestamp(recommendation.timestamp)}
                   </div>
                 </div>
                 
@@ -62,25 +69,29 @@ const RecommendationHistory = ({ onSelectRecommendation }) => {
                   <span className="text-blue-400 font-semibold">{recommendation.totalApr || 0}% APR</span>
                   <button 
                     className="text-gray-400 hover:text-white"
-                    onClick={() => setExpandedItem(expandedItem === index ? null : index)}
+                    onClick={() => handleExpand(index)}
+                    aria-label={expandedItem === index ? "Collapse" : "Expand"}
                   >
-                    {expandedItem === index ? 
+                    {expandedItem === index ? (
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                      </svg> :
+                      </svg>
+                    ) : (
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                       </svg>
-                    }
+                    )}
                   </button>
                 </div>
               </div>
               
               {expandedItem === index && (
                 <div className="mt-3 pt-3 border-t border-gray-600">
-                  <div className="text-sm text-gray-300 mb-2">
-                    {recommendation.summary}
-                  </div>
+                  {recommendation.summary && (
+                    <div className="text-sm text-gray-300 mb-2">
+                      {recommendation.summary}
+                    </div>
+                  )}
                   
                   {recommendation.allocation && recommendation.allocation.length > 0 && (
                     <div className="mb-3">
@@ -88,7 +99,7 @@ const RecommendationHistory = ({ onSelectRecommendation }) => {
                       <div className="space-y-1">
                         {recommendation.allocation.map((item, i) => (
                           <div key={i} className="flex justify-between text-xs">
-                            <span className="text-gray-300">{item.protocol} ({item.product})</span>
+                            <span className="text-gray-300">{item.protocol} ({item.product || 'Staking'})</span>
                             <span className="text-gray-300">{item.percentage}%</span>
                           </div>
                         ))}
@@ -108,14 +119,19 @@ const RecommendationHistory = ({ onSelectRecommendation }) => {
                     </div>
                   )}
                   
+                  {recommendation.amount && (
+                    <div className="text-xs text-gray-400 my-2">
+                      Investment amount: {recommendation.amount} APT
+                    </div>
+                  )}
+                  
                   <div className="flex justify-end mt-3">
-                    <Button
-                      size="sm"
-                      variant="secondary"
+                    <button
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md"
                       onClick={() => handleSelect(recommendation)}
                     >
                       Use This Strategy
-                    </Button>
+                    </button>
                   </div>
                 </div>
               )}

@@ -1,167 +1,161 @@
+// src/components/common/WalletConnect.jsx
 import React, { useState } from 'react';
+import { useWalletContext } from '../../context/WalletContext';
 import Button from './Button';
 
-/**
- * WalletConnect component for connecting various wallet providers
- * @param {Object} props - Component props
- * @param {Function} props.onConnect - Callback when wallet is connected
- * @param {boolean} props.loading - Whether connection is in progress
- * @param {string} props.className - Additional CSS classes
- */
-const WalletConnect = ({ 
-  onConnect,
-  loading = false,
-  className = '',
-  size = 'md'
-}) => {
-  const [selectedWallet, setSelectedWallet] = useState(null);
-  const [showWalletList, setShowWalletList] = useState(false);
-  const [error, setError] = useState(null);
+const WalletConnect = ({ size = 'md', className = '', onConnect }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const { connected, shortenedAddress, balance, connectWallet, disconnectWallet } = useWalletContext();
 
-  // List of supported wallets
-  const supportedWallets = [
-    { id: 'petra', name: 'Petra Wallet', icon: '/icons/petra-wallet.svg' },
-    { id: 'martian', name: 'Martian Wallet', icon: '/icons/martian-wallet.svg' },
-    { id: 'pontem', name: 'Pontem Wallet', icon: '/icons/pontem-wallet.svg' },
-    { id: 'rise', name: 'Rise Wallet', icon: '/icons/rise-wallet.svg' },
-  ];
+  // Toggle dropdown
+  const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
 
-  // Handle wallet selection
-  const handleWalletSelect = (wallet) => {
-    setSelectedWallet(wallet);
-    setShowWalletList(false);
-    connectToWallet(wallet);
-  };
-
-  // Connect to the selected wallet
-  const connectToWallet = async (wallet) => {
+  // Handle wallet connection
+  const handleConnectWallet = async () => {
+    if (connected) {
+      toggleDropdown();
+      return;
+    }
+    
     try {
-      setError(null);
+      setConnecting(true);
+      await connectWallet();
       
-      // Check if wallet extension exists
-      if (!window[wallet.id]) {
-        setError(`${wallet.name} extension not found. Please install it first.`);
-        return;
+      // Call onConnect callback if provided
+      if (onConnect && typeof onConnect === 'function') {
+        onConnect({ address: shortenedAddress });
       }
       
-      // Attempt connection based on wallet type
-      let address;
-      
-      switch (wallet.id) {
-        case 'petra':
-          const petraResponse = await window.petra.connect();
-          address = petraResponse.address;
-          break;
-          
-        case 'martian':
-          const martianResponse = await window.martian.connect();
-          address = martianResponse.address;
-          break;
-          
-        case 'pontem':
-          const pontemResponse = await window.pontem.connect();
-          address = pontemResponse.address;
-          break;
-          
-        case 'rise':
-          const riseResponse = await window.rise.connect();
-          address = riseResponse.address;
-          break;
-          
-        default:
-          throw new Error(`Unsupported wallet: ${wallet.id}`);
-      }
-      
-      if (!address) {
-        throw new Error('Failed to get wallet address');
-      }
-      
-      // Save to localStorage
-      localStorage.setItem('connectedWallet', address);
-      localStorage.setItem('walletProvider', wallet.id);
-      
-      // Call onConnect callback with wallet info
-      if (onConnect) {
-        onConnect({ provider: wallet.id, address });
-      }
-      
+      setIsDropdownOpen(false);
     } catch (error) {
-      console.error('Wallet connection error:', error);
-      setError(error.message || 'Failed to connect wallet');
+      console.error('Wallet connection failed:', error);
+      // Error is handled in WalletContext
+    } finally {
+      setConnecting(false);
     }
   };
 
+  // Handle wallet disconnection
+  const handleDisconnect = () => {
+    disconnectWallet();
+    setIsDropdownOpen(false);
+  };
+
   return (
-    <div className={`wallet-connect ${className}`}>
-      {error && (
-        <div className="bg-red-500/20 border border-red-600 rounded-lg p-3 mb-4 text-sm text-red-200">
-          {error}
-        </div>
-      )}
-      
-      <div className="relative">
-        {!showWalletList ? (
-          <Button
-            variant="primary"
-            size={size}
-            isLoading={loading}
-            onClick={() => setShowWalletList(true)}
-            className="flex items-center"
+    <div className={`relative inline-block text-left ${className}`}>
+      {connected ? (
+        <div>
+          <button
+            onClick={toggleDropdown}
+            type="button"
+            className={`flex items-center space-x-2 px-4 ${
+              size === 'lg' ? 'py-3 text-base' : 'py-2 text-sm'
+            } bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors duration-200 font-medium`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+            <span>{shortenedAddress}</span>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className={`h-5 w-5 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
-            Connect Wallet
-          </Button>
-        ) : (
-          <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-2 min-w-[250px]">
-            <div className="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
-              <h3 className="text-sm font-medium">Select Wallet</h3>
-              <button 
-                onClick={() => setShowWalletList(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="space-y-1">
-              {supportedWallets.map(wallet => (
-                <button
-                  key={wallet.id}
-                  className="flex items-center w-full p-2 text-left rounded-md hover:bg-gray-700 transition-colors"
-                  onClick={() => handleWalletSelect(wallet)}
-                >
-                  <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center mr-3">
-                    <img 
-                      src={wallet.icon} 
-                      alt={wallet.name} 
-                      className="w-5 h-5"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = '/icons/default-wallet.svg';
-                      }}
-                    />
+          </button>
+
+          {isDropdownOpen && (
+            <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none z-20">
+              <div className="py-1">
+                <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Connected as</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-white truncate">{shortenedAddress}</p>
+                </div>
+                
+                {balance !== null && (
+                  <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Balance</p>
+                    <p className="text-sm font-medium text-gray-800 dark:text-white">{balance} APT</p>
                   </div>
-                  <span className="font-medium">{wallet.name}</span>
+                )}
+                
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shortenedAddress);
+                    setIsDropdownOpen(false);
+                  }}
+                  className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg className="mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Copy Address
                 </button>
-              ))}
+                
+                <button
+                  onClick={() => {
+                    window.open(`https://explorer.aptoslabs.com/account/${shortenedAddress}`, '_blank');
+                    setIsDropdownOpen(false);
+                  }}
+                  className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg className="mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  View on Explorer
+                </button>
+                
+                <button
+                  onClick={handleDisconnect}
+                  className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg className="mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Disconnect
+                </button>
+              </div>
             </div>
-            
-            <div className="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-400">
-              <p>First time using Aptos wallets?</p>
-              <a 
-                href="https://petra.app" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 transition-colors"
+          )}
+        </div>
+      ) : (
+        <Button
+          onClick={handleConnectWallet}
+          disabled={connecting}
+          variant="primary"
+          size={size}
+        >
+          {connecting ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Connecting...
+            </>
+          ) : (
+            <>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                Learn more about wallets →
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                />
+              </svg>
+              Connect Wallet
+            </>
+          )}
+        </Button>
+      )}
     </div>
   );
 };

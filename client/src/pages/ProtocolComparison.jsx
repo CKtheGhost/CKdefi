@@ -1,5 +1,6 @@
+// src/pages/ProtocolComparison.jsx
 import React, { useState, useEffect } from 'react';
-import { useMarketData } from '../hooks/useMarketData';
+import useMarketData from '../hooks/useMarketData';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import ProtocolTable from '../components/protocols/ProtocolTable';
 import YieldComparison from '../components/protocols/YieldComparison';
@@ -91,14 +92,14 @@ const ProtocolComparison = () => {
 
   // Get selected protocol data
   const getSelectedProtocolsData = () => {
-    if (!stakingData?.protocols) return {};
+    if (!stakingData?.protocols) return [];
     
     return Object.entries(stakingData.protocols)
       .filter(([name]) => selectedProtocols.includes(name))
-      .reduce((acc, [name, protocol]) => {
-        acc[name] = protocol;
-        return acc;
-      }, {});
+      .map(([name, protocol]) => ({
+        name,
+        ...protocol
+      }));
   };
 
   if (loading && !stakingData?.protocols) {
@@ -109,7 +110,7 @@ const ProtocolComparison = () => {
     <DashboardLayout activeSection={activeSection} onSectionChange={handleSectionChange}>
       <section id="protocol-comparison">
         <div className="container mx-auto px-4 py-6">
-          <h2 className="text-2xl font-bold mb-6">Protocol Comparison</h2>
+          <h2 className="text-2xl font-bold text-white mb-6">Protocol Comparison</h2>
           
           <div className="mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
@@ -117,7 +118,7 @@ const ProtocolComparison = () => {
                 <button
                   onClick={() => handleFilterChange('all')}
                   className={`px-4 py-2 rounded-lg transition ${
-                    filterType === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    filterType === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
                   All Protocols
@@ -125,7 +126,7 @@ const ProtocolComparison = () => {
                 <button
                   onClick={() => handleFilterChange('staking')}
                   className={`px-4 py-2 rounded-lg transition ${
-                    filterType === 'staking' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    filterType === 'staking' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
                   Staking
@@ -133,7 +134,7 @@ const ProtocolComparison = () => {
                 <button
                   onClick={() => handleFilterChange('lending')}
                   className={`px-4 py-2 rounded-lg transition ${
-                    filterType === 'lending' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    filterType === 'lending' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
                   Lending
@@ -141,14 +142,14 @@ const ProtocolComparison = () => {
                 <button
                   onClick={() => handleFilterChange('liquidity')}
                   className={`px-4 py-2 rounded-lg transition ${
-                    filterType === 'liquidity' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    filterType === 'liquidity' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
                   Liquidity
                 </button>
               </div>
               
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-400">
                 {selectedProtocols.length > 0 ? (
                   <span>Selected: {selectedProtocols.length} of 5 max</span>
                 ) : (
@@ -157,7 +158,7 @@ const ProtocolComparison = () => {
               </div>
             </div>
             
-            <div className="bg-white shadow rounded-lg p-6">
+            <div className="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
               <ProtocolTable 
                 protocols={getFilteredProtocols()} 
                 selectedProtocols={selectedProtocols}
@@ -168,19 +169,19 @@ const ProtocolComparison = () => {
           
           {selectedProtocols.length > 0 && (
             <div className="space-y-6">
-              <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-semibold mb-4">Yield Comparison</h3>
+              <div className="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">Yield Comparison</h3>
                 <YieldComparison protocols={getSelectedProtocolsData()} />
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white shadow rounded-lg p-6">
-                  <h3 className="text-lg font-semibold mb-4">Protocol Features</h3>
+                <div className="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-4">Protocol Features</h3>
                   <ProtocolFeatures protocols={getSelectedProtocolsData()} />
                 </div>
                 
-                <div className="bg-white shadow rounded-lg p-6">
-                  <h3 className="text-lg font-semibold mb-4">Risk Analysis</h3>
+                <div className="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
+                  <h3 className="text-lg font-semibold text-white mb-4">Risk Analysis</h3>
                   <RiskAnalysis protocols={getSelectedProtocolsData()} />
                 </div>
               </div>

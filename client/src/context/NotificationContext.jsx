@@ -1,36 +1,46 @@
+// Nexus-level NotificationContext.jsx
+// Maintains the original notification system, with robust logging and fallback checks.
+
 import React, { createContext, useState, useCallback, useContext } from 'react';
 
 // Create the context
 export const NotificationContext = createContext();
 
-// Create the provider component
+// Provider with advanced dismissal logic
 export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
-  const showNotification = useCallback((notification) => {
-    const id = Date.now();
-    const newNotification = {
-      id,
-      ...notification,
-      createdAt: new Date()
-    };
-    
-    setNotifications(prev => [...prev, newNotification]);
-    
-    // Auto-dismiss after timeout
-    const timeout = notification.timeout || 5000;
-    if (timeout > 0) {
-      setTimeout(() => {
-        dismissNotification(id);
-      }, timeout);
-    }
-    
-    return id;
+  const dismissNotification = useCallback((id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
-  const dismissNotification = useCallback((id) => {
-    setNotifications(prev => prev.filter(notification => notification.id !== id));
-  }, []);
+  const showNotification = useCallback(
+    (notification) => {
+      // If no message provided, fallback
+      if (!notification?.message) {
+        console.warn('[NotificationProvider] Attempted to show notification without message.');
+        return null;
+      }
+
+      const id = Date.now();
+      const newNotification = {
+        id,
+        ...notification,
+        createdAt: new Date(),
+      };
+
+      setNotifications((prev) => [...prev, newNotification]);
+
+      const timeout = notification.timeout ?? 5000;
+      if (timeout > 0) {
+        setTimeout(() => {
+          dismissNotification(id);
+        }, timeout);
+      }
+      return id;
+    },
+    [dismissNotification]
+  );
 
   const clearAllNotifications = useCallback(() => {
     setNotifications([]);
@@ -40,23 +50,19 @@ export const NotificationProvider = ({ children }) => {
     notifications,
     showNotification,
     dismissNotification,
-    clearAllNotifications
+    clearAllNotifications,
   };
 
-  return (
-    <NotificationContext.Provider value={value}>
-      {children}
-    </NotificationContext.Provider>
-  );
+  return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 };
 
-// Hook for easy context use
+// Custom hook for usage
 export const useNotification = () => {
-  const context = useContext(NotificationContext);
-  if (!context) {
-    throw new Error('useNotification must be used within a NotificationProvider');
+  const ctx = useContext(NotificationContext);
+  if (!ctx) {
+    throw new Error('[useNotification] must be used within a NotificationProvider.');
   }
-  return context;
+  return ctx;
 };
 
 export default NotificationProvider;

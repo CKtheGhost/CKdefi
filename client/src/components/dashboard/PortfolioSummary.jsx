@@ -1,215 +1,178 @@
-import React, { useEffect, useState } from 'react';
-import { useWalletContext } from '../../context/WalletContext';
-import { useData } from '../../context/DataContext';
+// PortfolioSummary.jsx - Portfolio summary component for dashboard
+
+import React from 'react';
 import { Link } from 'react-router-dom';
+import { formatCurrency, formatPercentage, formatDate } from '../../utils/formatters';
 
-const PortfolioSummary = () => {
-  const { walletAddress } = useWalletContext();
-  const { portfolioData, loadingPortfolio, fetchWalletData } = useData();
-  const [chartInitialized, setChartInitialized] = useState(false);
-
-  useEffect(() => {
-    if (walletAddress && !portfolioData) {
-      fetchWalletData(walletAddress);
-    }
-  }, [walletAddress, portfolioData, fetchWalletData]);
-
-  useEffect(() => {
-    if (portfolioData && !chartInitialized && typeof window.initializeWalletCharts === 'function') {
-      window.initializeWalletCharts(portfolioData);
-      setChartInitialized(true);
-    }
-  }, [portfolioData, chartInitialized]);
-
-  if (loadingPortfolio) {
+const PortfolioSummary = ({ portfolioData, loading, error }) => {
+  // If error occurred
+  if (error) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Portfolio Summary</h2>
-        <div className="flex justify-center items-center h-40">
-          <div className="loader"></div>
+      <div className="bg-white dark:bg-dark-lighter p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className="text-center py-4">
+          <div className="flex items-center justify-center text-red-500 mb-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <span className="font-medium">Error loading portfolio</span>
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-3 inline-flex items-center px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+          >
+            Refresh
+          </button>
         </div>
       </div>
     );
   }
 
-  if (!portfolioData) {
+  // If loading or no data yet
+  if (loading || !portfolioData) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Portfolio Summary</h2>
-        <div className="text-center py-8">
-          <p className="text-gray-400 mb-4">Connect your wallet to view your portfolio summary</p>
-          <Link to="/wallet" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-            Analyze Wallet
-          </Link>
+      <div className="bg-white dark:bg-dark-lighter p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-pulse">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1">
+            <div className="h-7 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-3"></div>
+            <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-3"></div>
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md">
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-2"></div>
+                <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Format large numbers with commas
-  const formatValue = (value) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(value);
+  // Calculate protocol distribution percentages for the pie chart
+  const getProtocolDistribution = () => {
+    const total = portfolioData.totalValueUSD || 0;
+    const aptValue = portfolioData.apt?.valueUSD || 0;
+    const stakedValue = portfolioData.stakedTokens?.valueUSD || 0;
+    const liquidityValue = portfolioData.liquidity?.estimatedValueUSD || 0;
+    
+    return [
+      { name: 'Native APT', value: aptValue, percentage: (aptValue / total) * 100 },
+      { name: 'Staked APT', value: stakedValue, percentage: (stakedValue / total) * 100 },
+      { name: 'Liquidity', value: liquidityValue, percentage: (liquidityValue / total) * 100 }
+    ];
   };
 
+  const protocolDistribution = getProtocolDistribution();
+  
+  // Get 24h change (placeholder for now)
+  const dailyChange = 1.25; // Placeholder value, would come from API
+  const isPositiveChange = dailyChange >= 0;
+
   return (
-    <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold">Portfolio Summary</h2>
-        <Link 
-          to="/wallet" 
-          className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
-        >
-          <span>Detailed Analysis</span>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-gray-700 rounded-lg p-4">
-          <h3 className="text-sm text-gray-400 mb-1">Total Value</h3>
-          <p className="text-2xl font-bold">{formatValue(portfolioData.totalValueUSD || 0)}</p>
-          {portfolioData.performance?.dailyChange && (
-            <p className={`text-sm ${parseFloat(portfolioData.performance.dailyChange) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {parseFloat(portfolioData.performance.dailyChange) >= 0 ? '+' : ''}{portfolioData.performance.dailyChange}% today
+    <div className="bg-white dark:bg-dark-lighter p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col md:flex-row gap-6">
+        {/* Total value section */}
+        <div className="flex-1">
+          <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Portfolio Value</h2>
+          <div className="flex items-baseline mt-1">
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+              {formatCurrency(portfolioData.totalValueUSD)}
+            </span>
+            <span className={`ml-2 text-sm font-medium ${isPositiveChange ? 'text-green-500' : 'text-red-500'}`}>
+              {isPositiveChange ? '+' : ''}{formatPercentage(dailyChange, 2)} (24h)
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Last updated: {formatDate(portfolioData.lastUpdated, 'relative')}
+          </p>
+        </div>
+        
+        {/* Portfolio stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* APT Balance */}
+          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md">
+            <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400">APT Balance</h3>
+            <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+              {portfolioData.apt?.formatted || '0 APT'}
             </p>
-          )}
-        </div>
-
-        <div className="bg-gray-700 rounded-lg p-4">
-          <h3 className="text-sm text-gray-400 mb-1">Native APT</h3>
-          <p className="text-2xl font-bold">{portfolioData.apt?.amount || '0.00'} APT</p>
-          <p className="text-sm text-gray-400">{formatValue(portfolioData.apt?.valueUSD || 0)}</p>
-        </div>
-
-        <div className="bg-gray-700 rounded-lg p-4">
-          <h3 className="text-sm text-gray-400 mb-1">Staked Assets</h3>
-          <p className="text-2xl font-bold">
-            {(
-              parseFloat(portfolioData.stAPT?.amount || 0) + 
-              parseFloat(portfolioData.sthAPT?.amount || 0) + 
-              parseFloat(portfolioData.tAPT?.amount || 0) +
-              parseFloat(portfolioData.dAPT?.amount || 0)
-            ).toFixed(2)} APT
-          </p>
-          <p className="text-sm text-gray-400">
-            {formatValue(
-              (portfolioData.stAPT?.valueUSD || 0) + 
-              (portfolioData.sthAPT?.valueUSD || 0) + 
-              (portfolioData.tAPT?.valueUSD || 0) +
-              (portfolioData.dAPT?.valueUSD || 0)
-            )}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Allocation</h3>
-          <div id="portfolio-allocation-chart" className="h-64 w-full">
-            {/* Chart will be rendered here by the initializeWalletCharts function */}
           </div>
-        </div>
-
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Performance</h3>
-          <div id="portfolio-performance-chart" className="h-64 w-full">
-            {/* Chart will be rendered here by the initializeWalletCharts function */}
+          
+          {/* Staked APT */}
+          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md">
+            <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400">Staked APT</h3>
+            <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+              {portfolioData.stakedTokens?.totalStakedFormatted || '0 APT'}
+            </p>
+          </div>
+          
+          {/* APT Price */}
+          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md">
+            <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400">APT Price</h3>
+            <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+              {formatCurrency(portfolioData.aptPrice || 0)}
+            </p>
+          </div>
+          
+          {/* Active Positions */}
+          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md">
+            <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400">Active Positions</h3>
+            <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+              {/* Count active staking positions and liquidity positions */}
+              {Object.keys(portfolioData.stakedTokens?.tokens || {}).filter(key => 
+                portfolioData.stakedTokens.tokens[key].value > 0
+              ).length + (portfolioData.liquidity?.positions?.length || 0)}
+            </p>
           </div>
         </div>
       </div>
-
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold mb-3">Active Positions</h3>
-        <div className="bg-gray-700 rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-600">
-            <thead className="bg-gray-600">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Asset</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Protocol</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Amount</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Value</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">APR</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-600">
-              {portfolioData.stAPT && parseFloat(portfolioData.stAPT.amount) > 0 && (
-                <tr>
-                  <td className="px-4 py-2 whitespace-nowrap">stAPT</td>
-                  <td className="px-4 py-2 whitespace-nowrap">Amnis</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{portfolioData.stAPT.amount}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{formatValue(portfolioData.stAPT.valueUSD)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-green-400">{portfolioData.stAPT.apr || '7.5'}%</td>
-                </tr>
-              )}
-              {portfolioData.sthAPT && parseFloat(portfolioData.sthAPT.amount) > 0 && (
-                <tr>
-                  <td className="px-4 py-2 whitespace-nowrap">sthAPT</td>
-                  <td className="px-4 py-2 whitespace-nowrap">Thala</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{portfolioData.sthAPT.amount}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{formatValue(portfolioData.sthAPT.valueUSD)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-green-400">{portfolioData.sthAPT.apr || '7.3'}%</td>
-                </tr>
-              )}
-              {portfolioData.tAPT && parseFloat(portfolioData.tAPT.amount) > 0 && (
-                <tr>
-                  <td className="px-4 py-2 whitespace-nowrap">tAPT</td>
-                  <td className="px-4 py-2 whitespace-nowrap">Tortuga</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{portfolioData.tAPT.amount}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{formatValue(portfolioData.tAPT.valueUSD)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-green-400">{portfolioData.tAPT.apr || '7.2'}%</td>
-                </tr>
-              )}
-              {portfolioData.dAPT && parseFloat(portfolioData.dAPT.amount) > 0 && (
-                <tr>
-                  <td className="px-4 py-2 whitespace-nowrap">dAPT</td>
-                  <td className="px-4 py-2 whitespace-nowrap">Ditto</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{portfolioData.dAPT.amount}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{formatValue(portfolioData.dAPT.valueUSD)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-green-400">{portfolioData.dAPT.apr || '7.1'}%</td>
-                </tr>
-              )}
-              {portfolioData.ammLiquidity?.positions?.map((position, index) => (
-                <tr key={index}>
-                  <td className="px-4 py-2 whitespace-nowrap">{position.type}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{position.protocol}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{position.valueInApt} APT</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{formatValue(position.valueUSD)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-green-400">~9.5%</td>
-                </tr>
-              ))}
-              {(!portfolioData.stAPT || parseFloat(portfolioData.stAPT.amount) <= 0) &&
-               (!portfolioData.sthAPT || parseFloat(portfolioData.sthAPT.amount) <= 0) &&
-               (!portfolioData.tAPT || parseFloat(portfolioData.tAPT.amount) <= 0) &&
-               (!portfolioData.dAPT || parseFloat(portfolioData.dAPT.amount) <= 0) &&
-               (!portfolioData.ammLiquidity?.positions || portfolioData.ammLiquidity.positions.length === 0) && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-3 text-center text-gray-400">
-                    No active positions found. Get started with AI recommendations!
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      
+      {/* Protocol distribution section */}
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio Distribution</h3>
+          <Link to="/wallet" className="text-xs text-primary hover:text-primary-dark dark:hover:text-primary-light">
+            View Details
+          </Link>
         </div>
-      </div>
-
-      <div className="mt-6 flex justify-center">
-        <Link 
-          to="/ai-recommendations" 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-          Get AI Recommendations
-        </Link>
+        
+        <div className="space-y-2">
+          {protocolDistribution.map((item, index) => (
+            <div key={index} className="flex items-center">
+              <div className="w-full flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {formatPercentage(item.percentage, 1)}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full ${
+                      index === 0 ? 'bg-blue-500' : 
+                      index === 1 ? 'bg-green-500' : 
+                      'bg-purple-500'
+                    }`}
+                    style={{ width: `${Math.max(item.percentage, 0.5)}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -1,248 +1,130 @@
-// src/services/socialService.js
-import api from './api';
-
 /**
- * Service for handling social media integration for CompounDefi
+ * Service to handle social media integrations
  */
-class SocialService {
-  /**
-   * Connect a social media account
-   * @param {string} platform - 'twitter', 'discord', or 'telegram'
-   * @param {string} wallet - User's wallet address
-   * @returns {Promise<Object>} Connection result
-   */
-  async connectAccount(platform, wallet) {
-    try {
-      // Validate inputs
-      if (!platform || !wallet) {
-        throw new Error('Platform and wallet address are required');
-      }
-      
-      if (!['twitter', 'discord', 'telegram'].includes(platform)) {
-        throw new Error('Invalid platform. Supported platforms: twitter, discord, telegram');
-      }
-      
-      // Initialize connection window
-      const authWindow = this.openAuthWindow(platform);
-      
-      // Track connection status
-      const result = await this.trackAuthWindow(authWindow, platform, wallet);
-      
-      // Save connection status to local storage
-      this.saveConnectionStatus(platform, result.connected, wallet);
-      
-      return result;
-    } catch (error) {
-      console.error(`Social media connection error (${platform}):`, error);
-      return { 
-        connected: false, 
-        platform, 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      };
-    }
-  }
-  
-  /**
-   * Disconnect a social media account
-   * @param {string} platform - 'twitter', 'discord', or 'telegram'
-   * @param {string} wallet - User's wallet address
-   * @returns {Promise<Object>} Disconnection result
-   */
-  async disconnectAccount(platform, wallet) {
-    try {
-      // Send disconnect request to the backend
-      const response = await api.post('/api/social/disconnect', { platform, wallet });
-      
-      // Remove from local storage
-      this.removeConnectionStatus(platform, wallet);
-      
-      return {
-        disconnected: true,
-        platform,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error(`Social media disconnection error (${platform}):`, error);
-      return { 
-        disconnected: false, 
-        platform,
-        error: error.message,
-        timestamp: new Date().toISOString() 
-      };
-    }
-  }
-  
-  /**
-   * Check if a social account is connected
-   * @param {string} platform - 'twitter', 'discord', or 'telegram'
-   * @param {string} wallet - User's wallet address
-   * @returns {boolean} Connection status
-   */
-  isConnected(platform, wallet) {
-    if (!platform || !wallet) return false;
+
+// Connect to Twitter
+const connectTwitter = async () => {
+  try {
+    // In a real implementation, you'd use Twitter OAuth
+    console.log('Connecting to Twitter...');
     
-    const key = `social_${platform}_${wallet}`;
-    const status = localStorage.getItem(key);
-    return status === 'true';
-  }
-  
-  /**
-   * Get all connected social accounts for a wallet
-   * @param {string} wallet - User's wallet address
-   * @returns {Object} Connected accounts
-   */
-  getConnectedAccounts(wallet) {
-    if (!wallet) return {};
+    // Simulate OAuth flow
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
+    // Store connection in localStorage for persistence
+    localStorage.setItem('twitterConnected', 'true');
     
     return {
-      twitter: this.isConnected('twitter', wallet),
-      discord: this.isConnected('discord', wallet),
-      telegram: this.isConnected('telegram', wallet)
+      success: true,
+      platform: 'twitter',
+      username: '@user_' + Math.floor(Math.random() * 10000),
+      connectedAt: Date.now()
     };
+  } catch (error) {
+    console.error('Twitter connection error:', error);
+    throw new Error(`Failed to connect to Twitter: ${error.message}`);
   }
-  
-  /**
-   * Open authentication window for a platform
-   * @param {string} platform - Social platform
-   * @returns {Window} Auth window
-   * @private
-   */
-  openAuthWindow(platform) {
-    const width = 600;
-    const height = 700;
-    const left = window.innerWidth / 2 - width / 2;
-    const top = window.innerHeight / 2 - height / 2;
-    
-    const url = `/api/social/auth/${platform}`;
-    
-    return window.open(
-      url,
-      `Connect ${platform}`,
-      `toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=no, resizable=no, copyhistory=no, width=${width}, height=${height}, top=${top}, left=${left}`
-    );
-  }
-  
-  /**
-   * Track authentication window and wait for completion
-   * @param {Window} authWindow - Authentication window
-   * @param {string} platform - Social platform
-   * @param {string} wallet - User's wallet address
-   * @returns {Promise<Object>} Connection result
-   * @private
-   */
-  trackAuthWindow(authWindow, platform, wallet) {
-    return new Promise((resolve) => {
-      // Polling for closed window
-      const checkClosed = setInterval(() => {
-        if (authWindow.closed) {
-          clearInterval(checkClosed);
-          
-          // Check connection status from the backend
-          api.get(`/api/social/status/${platform}/${wallet}`)
-            .then(response => {
-              resolve({
-                connected: response.data.connected,
-                platform,
-                userName: response.data.userName,
-                avatar: response.data.avatar,
-                timestamp: new Date().toISOString()
-              });
-            })
-            .catch(error => {
-              resolve({
-                connected: false,
-                platform,
-                error: error.message,
-                timestamp: new Date().toISOString()
-              });
-            });
-        }
-      }, 500);
-      
-      // Safety timeout after 5 minutes
-      setTimeout(() => {
-        if (!authWindow.closed) {
-          authWindow.close();
-          clearInterval(checkClosed);
-          resolve({
-            connected: false,
-            platform,
-            error: 'Authentication timeout',
-            timestamp: new Date().toISOString()
-          });
-        }
-      }, 5 * 60 * 1000);
-    });
-  }
-  
-  /**
-   * Save connection status to local storage
-   * @param {string} platform - Social platform
-   * @param {boolean} connected - Connection status
-   * @param {string} wallet - User's wallet address
-   * @private
-   */
-  saveConnectionStatus(platform, connected, wallet) {
-    if (!platform || !wallet) return;
-    
-    const key = `social_${platform}_${wallet}`;
-    localStorage.setItem(key, connected.toString());
-  }
-  
-  /**
-   * Remove connection status from local storage
-   * @param {string} platform - Social platform
-   * @param {string} wallet - User's wallet address
-   * @private
-   */
-  removeConnectionStatus(platform, wallet) {
-    if (!platform || !wallet) return;
-    
-    const key = `social_${platform}_${wallet}`;
-    localStorage.removeItem(key);
-  }
-  
-  /**
-   * Fetch user's social feed
-   * @param {string} wallet - User's wallet address
-   * @returns {Promise<Object>} Social feed data
-   */
-  async getSocialFeed(wallet) {
-    try {
-      const response = await api.get(`/api/social/feed/${wallet}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching social feed:', error);
-      return {
-        posts: [],
-        error: error.message,
-        timestamp: new Date().toISOString()
-      };
-    }
-  }
-  
-  /**
-   * Get social connection stats
-   * @returns {Promise<Object>} Social stats
-   */
-  async getSocialStats() {
-    try {
-      const response = await api.get('/api/social/stats');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching social stats:', error);
-      return {
-        connectedUsers: 0,
-        twitterUsers: 0,
-        discordUsers: 0,
-        telegramUsers: 0,
-        error: error.message
-      };
-    }
-  }
-}
+};
 
-// Create and export instance
-const socialService = new SocialService();
-export default socialService;
+// Connect to Discord
+const connectDiscord = async () => {
+  try {
+    // In a real implementation, you'd use Discord OAuth
+    console.log('Connecting to Discord...');
+    
+    // Simulate OAuth flow
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Store connection in localStorage for persistence
+    localStorage.setItem('discordConnected', 'true');
+    
+    return {
+      success: true,
+      platform: 'discord',
+      username: 'User#' + Math.floor(Math.random() * 10000),
+      connectedAt: Date.now()
+    };
+  } catch (error) {
+    console.error('Discord connection error:', error);
+    throw new Error(`Failed to connect to Discord: ${error.message}`);
+  }
+};
+
+// Connect to Telegram
+const connectTelegram = async () => {
+  try {
+    // In a real implementation, you'd use Telegram Login Widget
+    console.log('Connecting to Telegram...');
+    
+    // Simulate Telegram login flow
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Store connection in localStorage for persistence
+    localStorage.setItem('telegramConnected', 'true');
+    
+    return {
+      success: true,
+      platform: 'telegram',
+      username: 'user_' + Math.floor(Math.random() * 10000),
+      connectedAt: Date.now()
+    };
+  } catch (error) {
+    console.error('Telegram connection error:', error);
+    throw new Error(`Failed to connect to Telegram: ${error.message}`);
+  }
+};
+
+// Disconnect a social platform
+const disconnectSocial = async (platform) => {
+  try {
+    console.log(`Disconnecting from ${platform}...`);
+    
+    // Remove from localStorage
+    localStorage.removeItem(`${platform}Connected`);
+    
+    return {
+      success: true,
+      platform
+    };
+  } catch (error) {
+    console.error(`${platform} disconnection error:`, error);
+    throw new Error(`Failed to disconnect from ${platform}: ${error.message}`);
+  }
+};
+
+// Check if social platforms are connected
+const checkSocialConnections = () => {
+  return {
+    twitter: localStorage.getItem('twitterConnected') === 'true',
+    discord: localStorage.getItem('discordConnected') === 'true',
+    telegram: localStorage.getItem('telegramConnected') === 'true'
+  };
+};
+
+// Send notification to connected social platforms
+const sendNotification = async (message, platforms = ['twitter', 'discord', 'telegram']) => {
+  try {
+    console.log(`Sending notification to platforms: ${platforms.join(', ')}`);
+    console.log(`Message: ${message}`);
+    
+    // In a real implementation, you'd use the platform APIs to send messages
+    
+    return {
+      success: true,
+      sentTo: platforms,
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    console.error('Notification sending error:', error);
+    throw new Error(`Failed to send notification: ${error.message}`);
+  }
+};
+
+export {
+  connectTwitter,
+  connectDiscord,
+  connectTelegram,
+  disconnectSocial,
+  checkSocialConnections,
+  sendNotification
+};

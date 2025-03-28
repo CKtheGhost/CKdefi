@@ -421,4 +421,7 @@ export const useWallet = () => {
   };
 };
 
-export default useWallet;
+// src/hooks/useWallet.js - Add named export
+export const useWalletContext = (...args) => {
+  return useWallet(...args);
+};

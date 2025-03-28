@@ -1,259 +1,238 @@
-// formatters.js - Utility functions for formatting data in CompounDefi
+// src/utils/formatters.js
+// Utility functions for formatting values
 
 /**
- * Format a number as currency with specified options
- * @param {number} value - Number to format
- * @param {string} currency - Currency code (default: 'USD')
- * @param {boolean} showSymbol - Whether to show currency symbol
+ * Format a number to a currency string
+ * @param {number} value - Value to format
+ * @param {string} currency - Currency code (default: USD)
+ * @param {number} digits - Number of decimal digits (default: 2)
  * @returns {string} Formatted currency string
  */
-export const formatCurrency = (value, currency = 'USD', showSymbol = true) => {
-  if (value === undefined || value === null) return '-';
-  
-  try {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(numValue)) return '-';
-    
-    const formatter = new Intl.NumberFormat('en-US', {
-      style: showSymbol ? 'currency' : 'decimal',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: numValue >= 1000 ? 0 : numValue >= 100 ? 1 : 2
-    });
-    
-    return formatter.format(numValue);
-  } catch (error) {
-    console.error('Error formatting currency:', error);
-    return `${value}`;
+export const formatCurrency = (value, currency = 'USD', digits = 2) => {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '$0.00';
   }
+  
+  const formatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
+  
+  return formatter.format(value);
+};
+
+/**
+ * Format a number with thousands separators
+ * @param {number} value - Value to format
+ * @param {number} digits - Number of decimal digits (default: 2)
+ * @returns {string} Formatted number
+ */
+export const formatNumber = (value, digits = 2) => {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '0';
+  }
+  
+  const formatter = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
+  
+  return formatter.format(value);
 };
 
 /**
  * Format a percentage value
- * @param {number} value - Percentage value
- * @param {number} decimalPlaces - Number of decimal places
- * @param {boolean} includeSymbol - Whether to include the % symbol
+ * @param {number} value - Value to format (e.g., 0.25 for 25%)
+ * @param {number} digits - Number of decimal digits (default: 2)
  * @returns {string} Formatted percentage
  */
-export const formatPercentage = (value, decimalPlaces = 2, includeSymbol = true) => {
-  if (value === undefined || value === null) return '-';
-  
-  try {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(numValue)) return '-';
-    
-    const formatted = numValue.toFixed(decimalPlaces);
-    return includeSymbol ? `${formatted}%` : formatted;
-  } catch (error) {
-    console.error('Error formatting percentage:', error);
-    return `${value}${includeSymbol ? '%' : ''}`;
+export const formatPercentage = (value, digits = 2) => {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '0%';
   }
+  
+  const formatter = new Intl.NumberFormat('en-US', {
+    style: 'percent',
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
+  
+  return formatter.format(value / 100);
 };
 
 /**
- * Format a number with thousand separators
- * @param {number} value - Number to format
- * @param {number} decimalPlaces - Number of decimal places
- * @returns {string} Formatted number
+ * Format a date
+ * @param {Date|string|number} date - Date to format
+ * @param {string} format - Format style ('full', 'long', 'medium', 'short', or 'relative')
+ * @returns {string} Formatted date
  */
-export const formatNumber = (value, decimalPlaces = 2) => {
-  if (value === undefined || value === null) return '-';
-  
-  try {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(numValue)) return '-';
-    
-    return numValue.toLocaleString('en-US', {
-      minimumFractionDigits: decimalPlaces,
-      maximumFractionDigits: decimalPlaces
-    });
-  } catch (error) {
-    console.error('Error formatting number:', error);
-    return `${value}`;
+export const formatDate = (date, format = 'medium') => {
+  if (!date) {
+    return '';
   }
+  
+  const dateObj = date instanceof Date ? date : new Date(date);
+  
+  if (isNaN(dateObj.getTime())) {
+    return '';
+  }
+  
+  if (format === 'relative') {
+    const now = new Date();
+    const diff = now.getTime() - dateObj.getTime();
+    
+    // Convert diff to seconds
+    const seconds = Math.floor(diff / 1000);
+    
+    if (seconds < 60) {
+      return 'just now';
+    }
+    
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    }
+    
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    }
+    
+    const days = Math.floor(hours / 24);
+    if (days < 30) {
+      return `${days} day${days !== 1 ? 's' : ''} ago`;
+    }
+    
+    const months = Math.floor(days / 30);
+    if (months < 12) {
+      return `${months} month${months !== 1 ? 's' : ''} ago`;
+    }
+    
+    const years = Math.floor(months / 12);
+    return `${years} year${years !== 1 ? 's' : ''} ago`;
+  }
+  
+  const options = {
+    full: { dateStyle: 'full', timeStyle: 'long' },
+    long: { dateStyle: 'long', timeStyle: 'short' },
+    medium: { dateStyle: 'medium' },
+    short: { dateStyle: 'short' }
+  };
+  
+  return new Intl.DateTimeFormat('en-US', options[format] || options.medium).format(dateObj);
 };
 
 /**
- * Format an APT amount with appropriate decimal places
- * @param {number|string} amount - APT amount
- * @param {number} decimalPlaces - Number of decimal places (default: 4)
- * @returns {string} Formatted APT amount
- */
-export const formatAptAmount = (amount, decimalPlaces = 4) => {
-  if (amount === undefined || amount === null) return '-';
-  
-  try {
-    const numValue = typeof amount === 'string' ? parseFloat(amount) : amount;
-    if (isNaN(numValue)) return '-';
-    
-    if (numValue === 0) return '0 APT';
-    
-    // Adjust decimal places based on the value
-    let places = decimalPlaces;
-    if (numValue >= 1000) places = 2;
-    else if (numValue < 0.001) places = 8;
-    else if (numValue < 0.1) places = 6;
-    
-    return `${numValue.toFixed(places)} APT`;
-  } catch (error) {
-    console.error('Error formatting APT amount:', error);
-    return `${amount} APT`;
-  }
-};
-
-/**
- * Format a wallet address for display
- * @param {string} address - Wallet address
- * @param {number} prefixLength - Number of prefix characters to show
- * @param {number} suffixLength - Number of suffix characters to show
+ * Format an address for display (0x1234...5678)
+ * @param {string} address - Address to format
+ * @param {number} prefixLength - Number of characters to show at start
+ * @param {number} suffixLength - Number of characters to show at end
  * @returns {string} Formatted address
  */
 export const formatAddress = (address, prefixLength = 6, suffixLength = 4) => {
-  if (!address) return '';
+  if (!address || typeof address !== 'string') {
+    return '';
+  }
   
-  try {
-    if (address.length <= prefixLength + suffixLength) return address;
-    
-    return `${address.substring(0, prefixLength)}...${address.substring(address.length - suffixLength)}`;
-  } catch (error) {
-    console.error('Error formatting address:', error);
+  if (address.length <= prefixLength + suffixLength) {
     return address;
   }
-};
-
-/**
- * Format a date or timestamp
- * @param {string|number|Date} date - Date to format
- * @param {object} options - Intl.DateTimeFormat options
- * @returns {string} Formatted date
- */
-export const formatDate = (date, options = {}) => {
-  if (!date) return '';
   
-  try {
-    const dateObj = typeof date === 'string' || typeof date === 'number' 
-      ? new Date(date) 
-      : date;
-    
-    if (isNaN(dateObj.getTime())) return '';
-    
-    const defaultOptions = {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
-    
-    return new Intl.DateTimeFormat('en-US', { ...defaultOptions, ...options }).format(dateObj);
-  } catch (error) {
-    console.error('Error formatting date:', error);
-    return `${date}`;
-  }
+  return `${address.slice(0, prefixLength)}...${address.slice(-suffixLength)}`;
 };
 
 /**
- * Format relative time (e.g., "2 hours ago")
- * @param {string|number|Date} date - Date to format
- * @returns {string} Relative time string
+ * Format file size
+ * @param {number} bytes - Size in bytes
+ * @param {number} decimals - Number of decimal places
+ * @returns {string} Formatted file size
  */
-export const formatRelativeTime = (date) => {
-  if (!date) return '';
+export const formatFileSize = (bytes, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
   
-  try {
-    const dateObj = typeof date === 'string' || typeof date === 'number' 
-      ? new Date(date) 
-      : date;
-    
-    if (isNaN(dateObj.getTime())) return '';
-    
-    const now = new Date();
-    const diffMs = now - dateObj;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-    
-    if (diffSec < 60) return 'just now';
-    if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
-    if (diffHour < 24) return `${diffHour} hour${diffHour === 1 ? '' : 's'} ago`;
-    if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
-    
-    // Fall back to standard date format for older dates
-    return formatDate(dateObj, { hour: undefined, minute: undefined });
-  } catch (error) {
-    console.error('Error formatting relative time:', error);
-    return `${date}`;
-  }
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
 /**
- * Format APR for display
- * @param {number|string} apr - APR value
- * @param {boolean} includeSymbol - Whether to include the % symbol
- * @returns {string} Formatted APR
- */
-export const formatAPR = (apr, includeSymbol = true) => {
-  if (apr === undefined || apr === null) return '-';
-  
-  try {
-    const numValue = typeof apr === 'string' ? parseFloat(apr) : apr;
-    if (isNaN(numValue)) return '-';
-    
-    // Use two decimal places for most APRs, but more for very small values
-    const decimalPlaces = numValue < 0.01 ? 4 : 2;
-    return formatPercentage(numValue, decimalPlaces, includeSymbol);
-  } catch (error) {
-    console.error('Error formatting APR:', error);
-    return `${apr}${includeSymbol ? '%' : ''}`;
-  }
-};
-
-/**
- * Format a time duration in a human-readable way
+ * Format duration in milliseconds to human-readable string
  * @param {number} milliseconds - Duration in milliseconds
  * @returns {string} Formatted duration
  */
 export const formatDuration = (milliseconds) => {
-  if (!milliseconds || milliseconds <= 0) return '-';
-  
-  try {
-    const seconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
-  } catch (error) {
-    console.error('Error formatting duration:', error);
-    return '-';
+  if (!milliseconds || isNaN(milliseconds) || milliseconds < 0) {
+    return '0s';
   }
+  
+  const seconds = Math.floor(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) {
+    return `${days}d ${hours % 24}h`;
+  }
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
+  
+  if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+  
+  return `${seconds}s`;
 };
 
 /**
- * Format a value for compact display (e.g., 1.2K, 3.5M)
- * @param {number} value - Value to format
- * @param {number} precision - Number of decimal places
- * @returns {string} Formatted compact value
+ * Format APR value
+ * @param {number} apr - APR value (e.g. 7.5 for 7.5%)
+ * @param {number} digits - Number of decimal places
+ * @returns {string} Formatted APR with % sign
  */
-export const formatCompact = (value, precision = 1) => {
-  if (value === undefined || value === null) return '-';
-  
-  try {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(numValue)) return '-';
-    
-    const formatter = new Intl.NumberFormat('en-US', {
-      notation: 'compact',
-      maximumFractionDigits: precision
-    });
-    
-    return formatter.format(numValue);
-  } catch (error) {
-    console.error('Error formatting compact value:', error);
-    return `${value}`;
+export const formatAPR = (apr, digits = 2) => {
+  if (apr === undefined || apr === null || isNaN(apr)) {
+    return '0%';
   }
+  
+  return `${parseFloat(apr).toFixed(digits)}%`;
+};
+
+/**
+ * Format large numbers with k, M, B, T suffixes
+ * @param {number} value - Number to format
+ * @param {number} digits - Number of decimal places
+ * @returns {string} Formatted number with suffix
+ */
+export const formatCompactNumber = (value, digits = 1) => {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '0';
+  }
+  
+  const formatter = new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    compactDisplay: 'short',
+    maximumFractionDigits: digits
+  });
+  
+  return formatter.format(value);
+};
+
+export default {
+  formatCurrency,
+  formatNumber,
+  formatPercentage,
+  formatDate,
+  formatAddress,
+  formatFileSize,
+  formatDuration,
+  formatAPR,
+  formatCompactNumber
 };

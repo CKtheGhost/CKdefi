@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '../hooks/useWallet';
+import { useWalletContext } from '../context/WalletContext';
 import LandingLayout from '../components/layout/LandingLayout';
 import Hero from '../components/landing/Hero';
 import Features from '../components/landing/Features';
@@ -11,17 +11,22 @@ import { useNotification } from '../context/NotificationContext';
 
 const Landing = () => {
   const navigate = useNavigate();
-  const { connected, address, connectWallet } = useWalletContext();
+  const { isConnected, address, connectWallet } = useWalletContext();
   const { stakingData, loading, fetchMarketData } = useMarketData();
   const { showNotification } = useNotification();
   const [topProtocols, setTopProtocols] = useState([]);
 
   useEffect(() => {
-    // If user is already connected, redirect to dashboard
-    if (connected && address) {
+    // If user is already connected and has completed onboarding, redirect to dashboard
+    if (isConnected && address && localStorage.getItem('onboardingCompleted') === 'true') {
       navigate('/dashboard');
     }
-  }, [connected, address, navigate]);
+    
+    // If connected but onboarding not completed, redirect to onboarding
+    if (isConnected && address && localStorage.getItem('onboardingCompleted') !== 'true') {
+      navigate('/onboarding');
+    }
+  }, [isConnected, address, navigate]);
 
   useEffect(() => {
     // Fetch market data for protocol showcase
@@ -38,7 +43,7 @@ const Landing = () => {
           tvl: parseFloat(data.tvl || 0),
           type: data.type || 'staking',
           description: data.description || `${name} is a ${data.type || 'staking'} protocol on Aptos.`,
-          logo: data.logo || '/logo.png'
+          logo: data.logo || '/assets/images/protocols/default.png'
         }))
         .filter(protocol => protocol.apr > 0)
         .sort((a, b) => b.apr - a.apr)
@@ -52,15 +57,25 @@ const Landing = () => {
     try {
       await connectWallet();
       showNotification('Wallet connected successfully!', 'success');
-      navigate('/dashboard');
+      
+      // Check if onboarding is completed
+      if (localStorage.getItem('onboardingCompleted') === 'true') {
+        navigate('/dashboard');
+      } else {
+        navigate('/onboarding');
+      }
     } catch (error) {
       showNotification(`Failed to connect wallet: ${error.message}`, 'error');
     }
   };
 
   const handleGetStarted = () => {
-    if (connected) {
-      navigate('/dashboard');
+    if (isConnected) {
+      if (localStorage.getItem('onboardingCompleted') === 'true') {
+        navigate('/dashboard');
+      } else {
+        navigate('/onboarding');
+      }
     } else {
       // Scroll to connect wallet section
       const connectSection = document.getElementById('connect-section');
@@ -87,7 +102,7 @@ const Landing = () => {
       <ConnectSection 
         id="connect-section"
         onConnect={handleConnectWallet} 
-        connected={connected}
+        connected={isConnected}
       />
     </LandingLayout>
   );
