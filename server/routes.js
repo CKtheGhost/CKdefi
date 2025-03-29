@@ -1,6 +1,6 @@
-// routes.js - Unified routing configuration for CompounDefi
+// routes.js
 const express = require('express');
-const path = require('path');
+const router = express.Router();
 const portfolioController = require('./controllers/portfolioController');
 const recommendationController = require('./controllers/recommendationController');
 const userController = require('./controllers/userController');
@@ -8,35 +8,26 @@ const { rateLimiter } = require('./middleware/rateLimit');
 const { validateWalletAddress, validateRecommendationParams } = require('./middleware/validation');
 const { cacheMiddleware } = require('./middleware/caching');
 
-/**
- * Configure all application routes
- * @param {Express} app - Express application instance
- */
-function setupRoutes(app) {
-  // API Routes with rate limiting
-  const apiRouter = express.Router();
-  app.use('/api', rateLimiter, apiRouter);
-
-  // Status endpoint - no auth required
-  apiRouter.get('/status', (req, res) => {
-    res.json({
-      status: 'online',
-      version: process.env.npm_package_version || '1.0.0',
-      timestamp: new Date().toISOString(),
-      network: process.env.APTOS_NETWORK || 'mainnet'
-    });
+// Status endpoint - no auth required
+router.get('/status', (req, res) => {
+  res.json({
+    status: 'online',
+    version: process.env.npm_package_version || '1.0.0',
+    timestamp: new Date().toISOString(),
+    network: process.env.APTOS_NETWORK || 'mainnet'
   });
+});
 
-  // Token data endpoints
-  apiRouter.get('/tokens/latest', cacheMiddleware(5 * 60), async (req, res, next) => {
-    try {
-      const tokenModule = require('./modules/token_tracker');
-      const tokenData = await tokenModule.getMemeCoinData();
-      res.json(tokenData);
-    } catch (error) {
-      next(error);
-    }
-  });
+// Token data endpoints
+router.get('/tokens/latest', cacheMiddleware(5 * 60), async (req, res, next) => {
+  try {
+    const tokenModule = require('./modules/token_tracker');
+    const tokenData = await tokenModule.getMemeCoinData();
+    res.json(tokenData);
+  } catch (error) {
+    next(error);
+  }
+});
 
   // News endpoints
   apiRouter.get('/news/latest', cacheMiddleware(15 * 60), async (req, res, next) => {
@@ -245,4 +236,4 @@ function setupRoutes(app) {
   }
 }
 
-module.exports = setupRoutes;
+module.exports = router;

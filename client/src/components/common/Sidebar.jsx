@@ -1,45 +1,41 @@
-import React, { useState, useEffect } from 'react';
+// src/components/common/Sidebar.jsx
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useWalletContext } from '../../context/WalletContext';
-import { useTheme } from '../../context/ThemeContext';
+import { checkSocialConnections, getConnectedAccountsCount } from '../../services/socialService';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, closeSidebar }) => {
   const location = useLocation();
-  const { walletConnected, connectWallet, walletAddress, disconnectWallet } = useWalletContext();
-  const { darkMode, toggleTheme } = useTheme();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [connectingWallet, setConnectingWallet] = useState(false);
-  const [socialConnections, setSocialConnections] = useState({
-    twitter: false,
-    discord: false,
-    telegram: false
-  });
-
-  // Navigation links with icons
-  const navLinks = [
-    { 
-      path: '/', 
-      name: 'Dashboard', 
+  const { isConnected } = useWalletContext();
+  
+  // Get connected social accounts count
+  const connectedAccounts = getConnectedAccountsCount();
+  const socialConnections = checkSocialConnections();
+  
+  // Navigation items
+  const navItems = [
+    {
+      name: 'Dashboard',
+      path: '/dashboard',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         </svg>
-      ),
-      requiresWallet: false
+      )
     },
-    { 
-      path: '/wallet', 
-      name: 'Wallet Analysis', 
+    {
+      name: 'Portfolio',
+      path: '/wallet',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
       ),
       requiresWallet: true
     },
-    { 
-      path: '/ai-recommendations', 
-      name: 'AI Recommendations', 
+    {
+      name: 'AI Recommendations',
+      path: '/recommendations',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -47,9 +43,9 @@ const Sidebar = () => {
       ),
       requiresWallet: true
     },
-    { 
-      path: '/auto-optimizer', 
-      name: 'Auto-Optimizer', 
+    {
+      name: 'Auto-Optimizer',
+      path: '/optimizer',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -57,264 +53,182 @@ const Sidebar = () => {
       ),
       requiresWallet: true
     },
-    { 
-      path: '/protocols', 
-      name: 'Protocol Comparison', 
+    {
+      name: 'Protocol Comparison',
+      path: '/protocols',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
-      ),
-      requiresWallet: false
+      )
     },
-    { 
-      path: '/news', 
-      name: 'News & Updates', 
+    {
+      name: 'Social Connections',
+      path: '/social',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
       ),
-      requiresWallet: false
+      badge: connectedAccounts > 0 ? connectedAccounts.toString() : null,
+      badgeColor: connectedAccounts > 0 ? 'bg-green-500' : 'bg-gray-500',
+      requiresWallet: true
     },
-    { 
-      path: '/settings', 
-      name: 'Settings', 
+    {
+      name: 'Settings',
+      path: '/settings',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-      ),
-      requiresWallet: false
+      )
     }
   ];
 
-  // Connect to wallet
-  const handleConnectWallet = async () => {
-    if (connectingWallet) return;
-    
-    try {
-      setConnectingWallet(true);
-      await connectWallet();
-    } catch (error) {
-      console.error('Wallet connection error:', error);
-    } finally {
-      setConnectingWallet(false);
-    }
-  };
-
-  // Handle social media connections
-  const connectSocial = (platform) => {
-    // This would integrate with your social media connection service
-    console.log(`Connecting to ${platform}...`);
-    
-    // Simulate successful connection
-    setTimeout(() => {
-      setSocialConnections(prev => ({
-        ...prev,
-        [platform]: true
-      }));
-    }, 1000);
-  };
-
   return (
     <>
-      {/* Mobile menu button */}
-      <button
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-blue-600 text-white"
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-
+      {/* Backdrop for mobile */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
+          onClick={closeSidebar}
+        ></div>
+      )}
+      
       {/* Sidebar */}
-      <div className={`bg-gray-900 text-white w-64 fixed h-screen flex flex-col transition-transform transform z-40
-                      ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        {/* Logo and branding */}
-        <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-blue-400">CompounDefi</h1>
-            <button 
-              onClick={toggleTheme}
-              className="p-1 rounded-full hover:bg-gray-800"
-            >
-              {darkMode ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">AI-Powered DeFi Aggregator</p>
+      <aside 
+        className={`fixed top-0 left-0 h-full w-64 bg-gray-800 border-r border-gray-700 transition-transform transform z-40 overflow-y-auto
+                  ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+      >
+        {/* Logo */}
+        <div className="p-4 border-b border-gray-700">
+          <Link to="/dashboard" className="flex items-center">
+            <img 
+              className="h-8 w-8" 
+              src="/assets/images/logo.svg" 
+              alt="CompounDefi Logo" 
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = '/favicon.ico';
+              }}
+            />
+            <span className="ml-2 text-xl font-bold bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent">
+              CompounDefi
+            </span>
+          </Link>
         </div>
-
-        {/* Wallet section */}
-        <div className="p-4 border-b border-gray-800">
-          {walletConnected ? (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Wallet Connected</span>
-                <span className="bg-green-500 rounded-full h-2 w-2"></span>
-              </div>
-              <div className="bg-gray-800 rounded p-2 text-xs font-mono break-all">
-                {walletAddress?.substring(0, 6)}...{walletAddress?.substring(walletAddress.length - 4)}
-              </div>
-              <div className="mt-2 flex space-x-2">
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(walletAddress);
-                  }}
-                  className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded flex items-center"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                  </svg>
-                  Copy
-                </button>
-                <button 
-                  onClick={disconnectWallet}
-                  className="text-xs bg-red-900 hover:bg-red-800 px-2 py-1 rounded flex items-center"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  Disconnect
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={handleConnectWallet}
-              disabled={connectingWallet}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center justify-center"
-            >
-              {connectingWallet ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  Connect Wallet
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Social connections */}
-        <div className="p-4 border-b border-gray-800">
-          <h3 className="text-sm font-medium mb-2">Connect Socials (Optional)</h3>
-          <div className="flex flex-col space-y-2">
-            <button
-              onClick={() => connectSocial('twitter')}
-              disabled={socialConnections.twitter}
-              className={`text-sm py-1 px-2 rounded-md flex items-center 
-                ${socialConnections.twitter 
-                  ? 'bg-blue-900 text-blue-300 cursor-default' 
-                  : 'bg-blue-800 hover:bg-blue-700'}`}
-            >
-              <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
-              </svg>
-              {socialConnections.twitter ? 'Connected' : 'Twitter'}
-            </button>
-            
-            <button
-              onClick={() => connectSocial('discord')}
-              disabled={socialConnections.discord}
-              className={`text-sm py-1 px-2 rounded-md flex items-center 
-                ${socialConnections.discord 
-                  ? 'bg-indigo-900 text-indigo-300 cursor-default' 
-                  : 'bg-indigo-800 hover:bg-indigo-700'}`}
-            >
-              <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
-              </svg>
-              {socialConnections.discord ? 'Connected' : 'Discord'}
-            </button>
-            
-            <button
-              onClick={() => connectSocial('telegram')}
-              disabled={socialConnections.telegram}
-              className={`text-sm py-1 px-2 rounded-md flex items-center 
-                ${socialConnections.telegram 
-                  ? 'bg-sky-900 text-sky-300 cursor-default' 
-                  : 'bg-sky-800 hover:bg-sky-700'}`}
-            >
-              <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-              </svg>
-              {socialConnections.telegram ? 'Connected' : 'Telegram'}
-            </button>
-          </div>
-        </div>
-
+        
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto py-4">
-          <nav className="px-4">
-            <ul className="space-y-1">
-              {navLinks.map((link) => {
-                // Skip restricted links if wallet not connected
-                if (link.requiresWallet && !walletConnected) {
-                  return null;
-                }
-                
-                const isActive = location.pathname === link.path;
-                
-                return (
-                  <li key={link.path}>
-                    <Link
-                      to={link.path}
-                      className={`flex items-center px-4 py-2 text-sm rounded-lg transition-colors
-                        ${isActive 
-                          ? 'bg-blue-700 text-white' 
-                          : 'text-gray-300 hover:bg-gray-800'}`}
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <span className="mr-3">{link.icon}</span>
-                      <span>{link.name}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        </div>
-
-        {/* Version info */}
-        <div className="p-4 border-t border-gray-800 text-xs text-gray-500">
-          <div className="flex justify-between">
-            <span>v2.0.0</span>
-            <a href="https://github.com/ckthghost/compoundefi" target="_blank" rel="noreferrer" className="hover:text-blue-400">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-              </svg>
+        <nav className="mt-4">
+          <ul className="space-y-1">
+            {navItems.map((item) => (
+              // Skip items that require wallet if not connected
+              (!item.requiresWallet || isConnected) && (
+                <li key={item.path}>
+                  <Link
+                    to={item.path}
+                    className={`flex items-center justify-between px-4 py-3 text-sm ${
+                      location.pathname === item.path
+                        ? 'bg-gray-700 text-white'
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    }`}
+                    onClick={closeSidebar}
+                  >
+                    <div className="flex items-center">
+                      <span className="mr-3">{item.icon}</span>
+                      <span>{item.name}</span>
+                    </div>
+                    
+                    {/* Badge for connected social accounts */}
+                    {item.badge && (
+                      <span className={`${item.badgeColor} text-white text-xs rounded-full w-5 h-5 flex items-center justify-center`}>
+                        {item.badge}
+                      </span>
+                    )}
+                    
+                    {/* Show icons for connected social accounts */}
+                    {item.name === 'Social Connections' && (
+                      <div className="flex space-x-1">
+                        {socialConnections.twitter && (
+                          <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                        )}
+                        {socialConnections.discord && (
+                          <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                        )}
+                        {socialConnections.telegram && (
+                          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        )}
+                      </div>
+                    )}
+                  </Link>
+                </li>
+              )
+            ))}
+          </ul>
+        </nav>
+        
+        {/* Social Media Quick Connect Section */}
+        {isConnected && (
+          <div className="mt-8 px-4">
+            <h3 className="text-xs uppercase text-gray-400 font-semibold mb-2 tracking-wider">
+              Social Connections
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              <button 
+                className={`flex flex-col items-center justify-center p-2 rounded ${
+                  socialConnections.twitter ? 'bg-blue-900/30 text-blue-400' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+                onClick={() => window.location.href = '/social'}
+              >
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
+                </svg>
+                <span className="text-xs mt-1">Twitter</span>
+              </button>
+              
+              <button 
+                className={`flex flex-col items-center justify-center p-2 rounded ${
+                  socialConnections.discord ? 'bg-indigo-900/30 text-indigo-400' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+                onClick={() => window.location.href = '/social'}
+              >
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.245.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z" />
+                </svg>
+                <span className="text-xs mt-1">Discord</span>
+              </button>
+              
+              <button 
+                className={`flex flex-col items-center justify-center p-2 rounded ${
+                  socialConnections.telegram ? 'bg-blue-900/30 text-blue-400' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+                onClick={() => window.location.href = '/social'}
+              >
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0Zm3.566 17.16c-.069.135-.151.172-.346.172h-.15c-.138 0-.273-.055-.418-.167-.161-.125-1.066-.933-1.513-1.303-.296-.243-.503-.303-.686-.303-.151 0-.358.018-.639.563-.274.5361-1.432.588-.543.588-.163 0-.54-.03-.79-.585-.25-.553-.932-2.248-.932-2.248s-.279-.441-.922-.441c-.667 0-2.203.057-3.41.627-1.21.57-1.854 1.781-1.854 1.781l.835.492s.103-.56.542-.56h.106c.388 0 .794.609.794 1.009v1.052c0 .29-.133.455-.343.455-.19 0-.342-.137-.342-.455v-.988c0-.334-.15-.512-.485-.512h-.165c-.335 0-.97.176-.97.652 0 .478 0 2.057 0 2.107 0 .137-.151.288-.343.288-.214 0-.343-.137-.343-.288V14.31c0-.384-.069-.685-.481-.685h-.138c-.343 0-.998.158-.998.712v.895c0 .177-.137.288-.33.288-.193 0-.33-.111-.33-.288v-.865c0-.36-.082-.686-.453-.686h-.16c-.343 0-.983.177-.983.669v.865c0 .202-.124.329-.316.329-.193 0-.317-.127-.317-.329v-2.25c0-.236-.261-.368-.261-.368l-.832.479s-.172.088-.172.227c0 .138 0 3.25 0 3.336 0 .31.016.619.133.885.117.265.426.404.75.404.234 0 .939-.04 1.12-.59.18-.02.058 0 .09 0 .062 0 .138.02.192.035.248.07.535.303.535.765 0 .314-.01 1.306-.01 1.306s-.028.177-.124.233c-.096.056-.233.015-.233.015l-.789-.26s-.054-.2-.054-.113c0-.89.003-1.117.003-1.152 0-.235-.159-.437-.422-.437h-.193c-.262 0-.425.213-.425.437v1.282c0 .075-.02.135-.088.177-.069.042-.158.014-.158.014l-1.232-.409s-.102-.034-.102-.138c0-.104 0-4.08 0-4.21 0-.128.096-.272.207-.312l1.87-.707s.22-.05.365.055c.146.106.2.274.2.364v.187c0 .166.234.236.234.236s.15-.79.343-.079c.166 0 .316.07.454.281.262.397.729 1.112.729 1.112s.096.144.096.227c0 .236-.193.236-.193.236h-.193c-.386 0-.64-.302-.64-.302s-.124-.15-.124.013c0 .047-.003 1.306-.003 1.306s-.014.07-.069.112c-.054.041-.151.034-.151.034l-.789-.26s-.055-.02-.055-.112c0-.93.003-1.104.003-1.153 0-.235-.158-.437-.413-.437h-.193c-.262 0-.425.213-.425.437v1.105c0 .184-.179.247-.179.247l-.868-.288s-.081-.027-.081-.108c0-.082.004-4.607.004-4.607C9.125 14.556 9.262 14.39 9.4 14.335l4.6-1.54c.27-.36.4-.5.434.096.34.102.034 2.023.034 2.023s.04.203-.8.266c-.117.063-.316.035-.316.035l-2.022-.688s-.081-.028-.081-.11c0-.08 0-.454 0-.531 0-.177.166-.272.166-.272s2.08-.708 2.162-.737c.083-.28.143-.21.18.069.25.063.042.45.042.45l.67 2.244" />
+                </svg>
+                <span className="text-xs mt-1">Telegram</span>
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Footer */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-500">v1.0.0</span>
+            <a 
+              href="https://docs.compoundefi.app" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-xs text-gray-500 hover:text-gray-400"
+            >
+              Documentation
             </a>
           </div>
         </div>
-      </div>
-
-      {/* Overlay for mobile */}
-      {mobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        ></div>
-      )}
+      </aside>
     </>
   );
 };

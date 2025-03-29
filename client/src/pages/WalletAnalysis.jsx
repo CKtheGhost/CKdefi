@@ -87,55 +87,54 @@ const WalletAnalysis = () => {
 
   return (
     <DashboardLayout activeSection={activeSection} onSectionChange={handleSectionChange}>
-      <section id="wallet-analysis">
-        <div className="container mx-auto px-4 py-6">
-          <WalletHeader 
-            portfolioData={portfolio}
-            isLoading={loading}
-            onRefresh={() => fetchPortfolioData(targetAddress)}
-          />
-          
+      <div className="container mx-auto px-4 py-6">
+        <WalletHeader 
+          portfolioData={portfolio}
+          isLoading={loading}
+          onRefresh={() => fetchPortfolioData(targetAddress)}
+        />
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2 space-y-6">
-              <AllocationChart portfolioData={portfolio} />
-              <PerformanceChart portfolioData={portfolio} />
+            <AllocationChart portfolioData={portfolio} />
+            <PerformanceChart portfolioData={portfolio} />
+          </div>
+          
+          <div className="space-y-6">
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-4">Summary</h3>
+              <PortfolioSummary portfolio={portfolio} />
             </div>
             
-            <div className="space-y-6">
+            {connected && (
               <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">Summary</h3>
-                <PortfolioSummary portfolio={portfolio} />
-              </div>
-              
-              {connected && (
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                  <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-                  <div className="space-y-3">
-                    <Button 
-                      onClick={() => navigate('/ai-recommendations')}
-                      className="w-full"
-                    >
-                      Get AI Recommendations
-                    </Button>
-                    <Button 
-                      onClick={() => navigate('/optimizer')}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Configure Auto-Optimizer
-                    </Button>
-                  </div>
+                <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
+                <div className="space-y-3">
+                  <Button 
+                    onClick={() => navigate('/ai-recommendations')}
+                    className="w-full"
+                  >
+                    Get AI Recommendations
+                  </Button>
+                  <Button 
+                    onClick={() => navigate('/optimizer')}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Configure Auto-Optimizer
+                  </Button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <StakedAssets portfolioData={portfolio} />
-            <LiquidityPositions portfolioData={portfolio} />
-          </div>
-          <TransactionHistory walletAddress={targetAddress} />
         </div>
-      </section>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <StakedAssets portfolioData={portfolio} />
+          <LiquidityPositions portfolioData={portfolio} />
+        </div>
+        <TransactionHistory walletAddress={targetAddress} />
+      </div>
     </DashboardLayout>
   );
 };
@@ -174,6 +173,6 @@ function PortfolioSummary({ portfolio }) {
       </div>
     </div>
   );
-}
+};
 
 export default WalletAnalysis;

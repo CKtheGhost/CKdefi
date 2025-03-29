@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWalletContext } from '../../context/WalletContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../common/Button';
+import { executeTransaction, getTransactionStatus, estimateGas } from '../../services/transactionService';
+import Card from '../common/Card';
 
 /**
  * ExecutionFlow component for handling the transaction execution process
@@ -26,8 +28,16 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
   const [executing, setExecuting] = useState(false);
   const [confirmDisabled, setConfirmDisabled] = useState(false);
   
+  // Transaction details
+  const [gasEstimate, setGasEstimate] = useState(null);
+  const [txDetails, setTxDetails] = useState({
+    estimatedGasCost: null,
+    estimatedTimeToComplete: null,
+    totalValue: 0
+  });
+  
   // Get wallet and notification context
-  const { wallet, isConnected, executeTransaction } = useWalletContext();
+  const { wallet, isConnected, walletAdapter } = useWalletContext();
   const { showNotification } = useNotification();
   
   // Prepare operations from recommendation when component mounts
@@ -35,8 +45,50 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
     if (recommendation && recommendation.allocation) {
       const ops = prepareOperationsFromRecommendation(recommendation);
       setOperations(ops);
+      
+      // Calculate total value
+      const totalValue = ops.reduce((sum, op) => sum + parseFloat(op.amount), 0);
+      setTxDetails(prev => ({
+        ...prev,
+        totalValue
+      }));
+      
+      // Estimate gas costs
+      estimateGasCosts(ops);
     }
   }, [recommendation]);
+  
+  // Auto-start execution if specified
+  useEffect(() => {
+    if (recommendation?.autoExecute && operations.length > 0 && !executing && step === 'confirm') {
+      handleConfirm();
+    }
+  }, [recommendation, operations, executing, step]);
+  
+  /**
+   * Estimates gas costs for all operations
+   */
+  const estimateGasCosts = async (ops) => {
+    try {
+      // In a real implementation, you would estimate gas for each operation
+      // This is a simplified implementation with mock data
+      const estimatedGasCost = 0.02; // Mock value in APT
+      const estimatedTimeToComplete = ops.length * 30; // Seconds
+      
+      setGasEstimate({
+        gasUnitPrice: 100,
+        maxGasAmount: 10000 * ops.length
+      });
+      
+      setTxDetails(prev => ({
+        ...prev,
+        estimatedGasCost,
+        estimatedTimeToComplete
+      }));
+    } catch (error) {
+      console.error('Failed to estimate gas costs:', error);
+    }
+  };
   
   /**
    * Prepares transaction operations from the recommendation data
@@ -241,14 +293,15 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
             arguments: [amountInOctas]
           };
           
-          // Execute transaction
-          const txResult = await executeTransaction(txPayload);
+          // Execute transaction using the wallet adapter
+          const txResult = await executeTransaction(walletAdapter, txPayload, gasEstimate);
           
           // Add to successful operations
           results.operations.push({
             ...operation,
             result: txResult,
-            status: 'success'
+            status: 'success',
+            txHash: txResult.hash
           });
           
           // Update progress
@@ -277,6 +330,7 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
           results.success = false;
           
           // Continue with next operation instead of aborting everything
+          // This allows partial strategy execution
         }
       }
       
@@ -374,7 +428,29 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t border-gray-600">
+                <td colSpan="2" className="py-2 font-medium text-white">Total</td>
+                <td className="py-2 text-right font-medium text-white">{txDetails.totalValue.toFixed(2)} APT</td>
+                <td></td>
+              </tr>
+            </tfoot>
           </table>
+        </div>
+        
+        {/* Transaction details */}
+        <div className="bg-gray-800 rounded-lg p-4 space-y-2">
+          <h4 className="font-medium text-gray-300">Transaction Details</h4>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-400">Estimated Gas:</span>
+              <span className="ml-2 text-white">{txDetails.estimatedGasCost} APT</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Estimated Time:</span>
+              <span className="ml-2 text-white">~{txDetails.estimatedTimeToComplete}s</span>
+            </div>
+          </div>
         </div>
 
         <div className="bg-yellow-900/20 border border-yellow-800 rounded p-4 text-sm text-yellow-300">
@@ -410,7 +486,7 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
             onClick={handleConfirm}
             disabled={confirmDisabled}
           >
-            Confirm
+            Confirm & Execute
           </Button>
         </div>
       </div>
@@ -581,6 +657,46 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
           </p>
         </div>
 
+        {/* Transaction details */}
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h4 className="font-medium text-gray-300 mb-3">Transaction Details</h4>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {executionResults.operations.map((op, index) => (
+              <div key={index} className="flex justify-between items-center text-sm border-b border-gray-700 py-2">
+                <div className="flex items-center">
+                  <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+                  <span className="text-white">{op.protocol} {op.type}</span>
+                </div>
+                <div className="flex items-center">
+                  <span className="text-gray-400 mr-2">{op.amount} APT</span>
+                  <a 
+                    href={`https://explorer.aptoslabs.com/txn/${op.txHash}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              </div>
+            ))}
+            {executionResults.failedOperations.map((op, index) => (
+              <div key={`failed-${index}`} className="flex justify-between items-center text-sm border-b border-gray-700 py-2">
+                <div className="flex items-center">
+                  <span className="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
+                  <span className="text-white">{op.protocol} {op.type}</span>
+                </div>
+                <div className="flex items-center">
+                  <span className="text-gray-400 mr-2">{op.amount} APT</span>
+                  <span className="text-red-400 text-xs">Failed</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="text-center">
           <Button variant="primary" onClick={onComplete}>
             View Updated Portfolio
@@ -666,12 +782,12 @@ const ExecutionFlow = ({ recommendation, onComplete, onCancel }) => {
 
   // Render component based on current step
   return (
-    <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-3xl w-full border border-gray-700">
+    <Card className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-3xl w-full border border-gray-700">
       {step === 'confirm' && renderConfirmStep()}
       {step === 'executing' && renderExecutingStep()}
       {step === 'complete' && renderCompleteStep()}
       {step === 'error' && renderErrorStep()}
-    </div>
+    </Card>
   );
 };
 

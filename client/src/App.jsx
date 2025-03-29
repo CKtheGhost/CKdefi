@@ -11,6 +11,7 @@ import Onboarding from './pages/Onboarding';
 import ProtocolComparison from './pages/ProtocolComparison';
 import Settings from './pages/Settings';
 import WalletAnalysis from './pages/WalletAnalysis';
+import SocialConnections from './pages/SocialConnections';
 
 // Import context providers
 import { DataProvider } from './context/DataContext';
@@ -45,6 +46,7 @@ const App = () => {
                           <Route path="/settings" element={<Settings />} />
                           <Route path="/wallet" element={<WalletAnalysis />} />
                           <Route path="/wallet/:walletAddress" element={<WalletAnalysis />} />
+                          <Route path="/social" element={<SocialConnections />} />
                           
                           {/* Fallback route */}
                           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,261 +1,268 @@
 // src/context/WalletContext.jsx
-
-import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
-import { showNotification } from '../utils/animations';
-import { executeTransaction } from '../services/transactionService';
+import { useNotification } from './NotificationContext';
+import { executeTransaction, CONTRACT_ADDRESSES } from '../services/transactionService';
 
-// Create the context
-export const WalletContext = createContext({});
+// Create context
+const WalletContext = createContext();
 
-/**
- * Provider component for wallet-related functionality
- */
-export function WalletProvider({ children }) {
-  // State variables
+export const WalletProvider = ({ children }) => {
+  // Wallet state
   const [isConnected, setIsConnected] = useState(false);
   const [address, setAddress] = useState('');
+  const [provider, setProvider] = useState(null);
   const [shortenedAddress, setShortenedAddress] = useState('');
-  const [walletProvider, setWalletProvider] = useState(null);
   const [balance, setBalance] = useState(null);
-  const [chainId, setChainId] = useState(null);
   const [portfolioData, setPortfolioData] = useState(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [connecting, setConnecting] = useState(false);
-
-  // Use Aptos wallet adapter
+  const [walletType, setWalletType] = useState(null);
+  const [network, setNetwork] = useState(null);
+  
+  // Get wallet adapter
   const {
     connect,
     account,
-    network,
     connected,
-    disconnect: disconnectWallet,
-    wallets,
+    disconnect,
     wallet,
+    wallets,
     signAndSubmitTransaction
   } = useWallet();
-
-  // Check initial connection status
-  useEffect(() => {
-    checkConnection();
-  }, [account, connected]);
-
-  // Update wallet data when connected
-  useEffect(() => {
-    if (isConnected && address) {
-      updateWalletData();
-      refreshPortfolio();
-    }
-  }, [isConnected, address]);
-
-  // Check if wallet is connected
-  const checkConnection = useCallback(() => {
-    const isConnected = connected && !!account?.address;
-    setIsConnected(isConnected);
-
-    if (isConnected) {
-      const addr = account.address.toString();
-      setAddress(addr);
-      setShortenedAddress(`${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`);
-      setWalletProvider(wallet.name);
-      
-      // Set chain ID based on network
-      if (network) {
-        setChainId(network.chainId);
-      }
-    } else {
-      setAddress('');
-      setShortenedAddress('');
-      setWalletProvider(null);
-      setBalance(null);
-      setChainId(null);
-    }
-  }, [account, connected, wallet, network]);
-
-  // Update wallet data (balance, etc.)
-  const updateWalletData = useCallback(async () => {
-    if (!isConnected || !address) return;
-
-    try {
-      // Get balance using the client or wallet API
-      // This implementation depends on the specific wallet provider
-      let balanceValue = null;
-
-      if (wallet && wallet.getBalance) {
-        balanceValue = await wallet.getBalance();
-      } else if (window.aptos) {
-        const response = await window.aptos.getAccountResources(address);
-        const accountResource = response.find(
-          (r) => r.type === '0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>'
-        );
-        
-        if (accountResource && accountResource.data && accountResource.data.coin) {
-          // Convert octas to APT (1 APT = 10^8 octas)
-          balanceValue = parseFloat(accountResource.data.coin.value) / 100000000;
-        }
-      }
-
-      setBalance(balanceValue);
-    } catch (err) {
-      console.error('Error updating wallet data:', err);
-      setError('Failed to load wallet data');
-    }
-  }, [isConnected, address, wallet]);
-
+  
+  // Get notification context
+  const { showNotification } = useNotification();
+  
   // Connect wallet
-  const connectWallet = useCallback(async (walletName = null) => {
+  const connectWallet = async (preferredProvider = null) => {
     try {
-      setConnecting(true);
       setError(null);
-
-      // If walletName is provided, find that specific wallet
-      const targetWallet = walletName
-        ? wallets.find(w => w.name.toLowerCase() === walletName.toLowerCase())
-        : wallet;
-
-      if (!targetWallet) {
-        throw new Error(`Wallet "${walletName}" not found. Please install the wallet extension.`);
+      
+      if (preferredProvider) {
+        // Connect to preferred provider
+        const walletToConnect = wallets.find(w => w.name.toLowerCase() === preferredProvider.toLowerCase());
+        if (walletToConnect) {
+          await connect(walletToConnect.name);
+        } else {
+          throw new Error(`Wallet provider ${preferredProvider} not found`);
+        }
+      } else {
+        // Connect to default or first available provider
+        await connect();
       }
-
-      // Connect to the wallet
-      await connect(targetWallet.name);
       
       return true;
-    } catch (err) {
-      console.error('Wallet connection error:', err);
-      setError(err.message || 'Failed to connect wallet');
-      showNotification(err.message || 'Failed to connect wallet', 'error');
-      return false;
-    } finally {
-      setConnecting(false);
+    } catch (error) {
+      console.error('Wallet connection error:', error);
+      setError(error.message || 'Failed to connect wallet');
+      throw error;
     }
-  }, [connect, wallets, wallet]);
-
+  };
+  
   // Disconnect wallet
-  const disconnect = useCallback(async () => {
+  const disconnectWallet = async () => {
     try {
-      await disconnectWallet();
+      await disconnect();
       setIsConnected(false);
       setAddress('');
       setShortenedAddress('');
-      setWalletProvider(null);
       setBalance(null);
-      setChainId(null);
       setPortfolioData(null);
+      setProvider(null);
       
-      showNotification('Wallet disconnected', 'info');
+      // Clear local wallet data
+      localStorage.removeItem('connectedWallet');
+      
       return true;
-    } catch (err) {
-      console.error('Wallet disconnect error:', err);
-      setError(err.message || 'Failed to disconnect wallet');
+    } catch (error) {
+      console.error('Wallet disconnection error:', error);
+      setError(error.message || 'Failed to disconnect wallet');
       return false;
     }
-  }, [disconnectWallet]);
-
+  };
+  
   // Execute transaction
-  const executeTransactionWithWallet = useCallback(async (payload, options = {}) => {
-    if (!isConnected || !signAndSubmitTransaction) {
-      throw new Error('Wallet not connected');
-    }
-
+  const executeWalletTransaction = async (transaction) => {
     try {
-      // Execute the transaction
-      const result = await executeTransaction(
-        { signAndSubmitTransaction }, // Wrap the function
-        payload,
-        options
-      );
-
-      if (result.success) {
-        showNotification('Transaction successful!', 'success');
-        // Refresh portfolio after successful transaction
-        setTimeout(() => refreshPortfolio(), 2000);
-      } else {
-        showNotification(`Transaction failed: ${result.error}`, 'error');
+      if (!isConnected) {
+        throw new Error('Wallet not connected');
       }
-
+      
+      // Execute transaction using the transaction service
+      const result = await executeTransaction(transaction, {
+        generateTransaction: async (payload) => {
+          // In a real implementation, this would create the transaction
+          return payload;
+        },
+        signTransaction: async (tx) => {
+          // In a real implementation, this would sign the transaction
+          return tx;
+        },
+        submitTransaction: async (signedTx) => {
+          // In a real implementation, this would interact with the wallet adapter
+          return await signAndSubmitTransaction({
+            ...signedTx,
+            type: "entry_function_payload"
+          });
+        },
+        getTransaction: async (hash) => {
+          // In a real implementation, this would check transaction status
+          // This is a simplified mock
+          return { success: true, hash };
+        }
+      });
+      
       return result;
-    } catch (err) {
-      console.error('Transaction execution error:', err);
-      const errorMsg = err.message || 'Transaction failed';
-      showNotification(errorMsg, 'error');
-      throw err;
+    } catch (error) {
+      console.error('Transaction execution error:', error);
+      setError(error.message || 'Failed to execute transaction');
+      throw error;
     }
-  }, [isConnected, signAndSubmitTransaction]);
-
+  };
+  
   // Refresh portfolio data
-  const refreshPortfolio = useCallback(async () => {
-    if (!isConnected || !address) return;
-
+  const refreshPortfolio = async () => {
+    if (!isConnected || !address) {
+      return;
+    }
+    
     try {
       setPortfolioLoading(true);
       setError(null);
-
-      // Call API to get portfolio data
-      const response = await fetch(`/api/wallet/${address}/portfolio`);
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch portfolio data');
-      }
-
-      const data = await response.json();
-      setPortfolioData(data);
+      // In a real implementation, this would fetch portfolio data from the API
+      // For now, we'll simulate a delay and return mock data
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Update balance if available in portfolio data
-      if (data.apt && data.apt.amount) {
-        setBalance(parseFloat(data.apt.amount));
-      }
-
-      return data;
-    } catch (err) {
-      console.error('Error fetching portfolio:', err);
-      setError(err.message || 'Failed to load portfolio data');
-      
-      // Try to use mock data for development
-      if (process.env.NODE_ENV === 'development') {
-        try {
-          const mockData = await import('../mocks/portfolioData.json');
-          setPortfolioData(mockData.default);
-          return mockData.default;
-        } catch (mockErr) {
-          console.log('No mock data available');
+      // Mock portfolio data
+      const mockPortfolioData = {
+        apt: {
+          amount: "100.5",
+          valueUSD: 250.25,
+          price: 2.49
+        },
+        stAPT: {
+          amount: "50.2",
+          valueUSD: 125.5,
+          apr: 7.4
+        },
+        sthAPT: {
+          amount: "30.1",
+          valueUSD: 75.25,
+          apr: 7.6
+        },
+        tAPT: {
+          amount: "20.5",
+          valueUSD: 51.25,
+          apr: 7.2
+        },
+        dAPT: {
+          amount: "10.3",
+          valueUSD: 25.75,
+          apr: 7.8
+        },
+        totalValueUSD: 527.0,
+        performance: {
+          dailyChange: "+1.2",
+          weeklyChange: "+3.5",
+          monthlyChange: "+8.2"
+        },
+        unrealizedGainUSD: 27.5,
+        ammLiquidity: {
+          hasLiquidity: true,
+          estimatedValueUSD: 125.0,
+          positions: [
+            {
+              protocol: "PancakeSwap",
+              pair: "APT/USDC",
+              valueUSD: 75.0,
+              apr: 9.5
+            },
+            {
+              protocol: "Cetus",
+              pair: "APT/stAPT",
+              valueUSD: 50.0,
+              apr: 8.2
+            }
+          ]
         }
-      }
+      };
       
+      setPortfolioData(mockPortfolioData);
+      
+      // Update balance
+      setBalance(parseFloat(mockPortfolioData.apt.amount).toFixed(4));
+      
+      return mockPortfolioData;
+    } catch (error) {
+      console.error('Portfolio refresh error:', error);
+      setError(error.message || 'Failed to refresh portfolio data');
       return null;
     } finally {
       setPortfolioLoading(false);
     }
-  }, [isConnected, address]);
-
-  // Context value
-  const contextValue = {
+  };
+  
+  // Get contract addresses
+  const getContractAddresses = () => {
+    return CONTRACT_ADDRESSES;
+  };
+  
+  // Update wallet state when Aptos wallet changes
+  useEffect(() => {
+    if (connected && account) {
+      setIsConnected(true);
+      setAddress(account.address);
+      setShortenedAddress(`${account.address.slice(0, 6)}...${account.address.slice(-4)}`);
+      setProvider(wallet?.name || 'Unknown');
+      setWalletType(wallet?.name || 'Unknown');
+      
+      // Save connected wallet to localStorage
+      localStorage.setItem('connectedWallet', account.address);
+      
+      // Fetch portfolio data
+      refreshPortfolio();
+    } else {
+      setIsConnected(false);
+      setAddress('');
+      setShortenedAddress('');
+      setBalance(null);
+    }
+  }, [connected, account, wallet]);
+  
+  // Provider value
+  const value = {
     isConnected,
-    connecting,
     address,
     shortenedAddress,
-    walletProvider,
     balance,
-    chainId,
     portfolioData,
     portfolioLoading,
     error,
+    provider: walletType,
+    network,
     connectWallet,
-    disconnect,
-    executeTransaction: executeTransactionWithWallet,
+    disconnectWallet,
+    executeTransaction: executeWalletTransaction,
     refreshPortfolio,
-    wallet
+    getContractAddresses
   };
-
+  
   return (
-    <WalletContext.Provider value={contextValue}>
+    <WalletContext.Provider value={value}>
       {children}
     </WalletContext.Provider>
   );
-}
+};
 
-// Custom hook to use the WalletContext
-export const useWalletContext = () => useContext(WalletContext);
+// Custom hook for using wallet context
+export const useWalletContext = () => {
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error('useWalletContext must be used within a WalletProvider');
+  }
+  return context;
+};
 
 export default WalletContext;

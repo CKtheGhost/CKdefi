@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useWalletContext } from '../../context/WalletContext';
 import Button from '../common/Button';
 import WalletConnect from '../common/WalletConnect';
 
@@ -6,27 +8,51 @@ import WalletConnect from '../common/WalletConnect';
  * ConnectSection component for the landing page
  * Encourages users to connect their wallet and social accounts
  */
-const ConnectSection = () => {
+const ConnectSection = ({ onWalletConnected, socialConnections = {} }) => {
   const [connectState, setConnectState] = useState({
     wallet: false,
-    twitter: false,
-    discord: false,
-    telegram: false
+    twitter: socialConnections.twitter || false,
+    discord: socialConnections.discord || false,
+    telegram: socialConnections.telegram || false
   });
+  const navigate = useNavigate();
+  const { isConnected } = useWalletContext();
+  const sectionRef = useRef(null);
 
-  // Mock function to simulate social connections
-  const connectSocial = (platform) => {
-    // In a real app, this would integrate with the social platform's API
-    setTimeout(() => {
-      setConnectState(prev => ({
-        ...prev,
-        [platform]: true
-      }));
-    }, 1000);
+  // Update state when props change
+  useEffect(() => {
+    setConnectState(prev => ({
+      ...prev,
+      wallet: isConnected,
+      twitter: socialConnections.twitter || false,
+      discord: socialConnections.discord || false,
+      telegram: socialConnections.telegram || false
+    }));
+  }, [isConnected, socialConnections]);
+
+  // Handle wallet connection
+  const handleWalletConnect = () => {
+    setConnectState(prev => ({ ...prev, wallet: true }));
+    
+    if (onWalletConnected) {
+      onWalletConnected();
+    }
+  };
+
+  // Handle dashboard navigation
+  const handleNavigateToDashboard = () => {
+    // Set onboarding completed flag
+    localStorage.setItem('onboardingCompleted', 'true');
+    
+    // Navigate to dashboard or onboarding
+    navigate('/onboarding');
   };
 
   return (
-    <section id="connect" className="py-20 bg-gray-900 relative overflow-hidden">
+    <section 
+      ref={sectionRef}
+      className="py-20 bg-gray-900 relative overflow-hidden"
+    >
       {/* Background elements */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-1/3 left-1/4 w-64 h-64 bg-blue-500 rounded-full filter blur-3xl"></div>
@@ -71,13 +97,13 @@ const ConnectSection = () => {
                       </div>
                     ) : (
                       <WalletConnect 
-                        onConnect={() => setConnectState(prev => ({ ...prev, wallet: true }))}
+                        onConnect={handleWalletConnect}
                       />
                     )}
                   </div>
                 </div>
                 
-                {/* Twitter Connection */}
+                {/* Twitter Connection Status */}
                 <div className="flex items-center justify-between p-4 bg-gray-750 rounded-lg">
                   <div className="flex items-center">
                     <div className="w-10 h-10 bg-blue-900/50 rounded-full flex items-center justify-center mr-4">
@@ -100,17 +126,14 @@ const ConnectSection = () => {
                         Connected
                       </div>
                     ) : (
-                      <Button
-                        variant="light"
-                        onClick={() => connectSocial('twitter')}
-                      >
-                        Connect
-                      </Button>
+                      <div className="text-gray-400 text-sm italic">
+                        Connect wallet first
+                      </div>
                     )}
                   </div>
                 </div>
                 
-                {/* Discord Connection */}
+                {/* Discord Connection Status */}
                 <div className="flex items-center justify-between p-4 bg-gray-750 rounded-lg">
                   <div className="flex items-center">
                     <div className="w-10 h-10 bg-indigo-900/50 rounded-full flex items-center justify-center mr-4">
@@ -133,27 +156,24 @@ const ConnectSection = () => {
                         Connected
                       </div>
                     ) : (
-                      <Button
-                        variant="light"
-                        onClick={() => connectSocial('discord')}
-                      >
-                        Connect
-                      </Button>
+                      <div className="text-gray-400 text-sm italic">
+                        Connect wallet first
+                      </div>
                     )}
                   </div>
                 </div>
                 
-                {/* Telegram Connection */}
+                {/* Telegram Connection Status */}
                 <div className="flex items-center justify-between p-4 bg-gray-750 rounded-lg">
                   <div className="flex items-center">
                     <div className="w-10 h-10 bg-blue-900/50 rounded-full flex items-center justify-center mr-4">
                       <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0Zm3.566 17.16c-.069.135-.151.172-.346.172h-.15c-.138 0-.273-.055-.418-.167-.161-.125-1.066-.933-1.513-1.303-.296-.243-.503-.303-.686-.303-.151 0-.358.018-.639.563-.274.5361-1.432.588-.543.588-.163 0-.54-.03-.79-.585-.25-.553-.932-2.248-.932-2.248s-.279-.441-.922-.441c-.667 0-2.203.057-3.41.627-1.21.57-1.854 1.781-1.854 1.781l.835.492s.103-.56.542-.56h.106c.388 0 .794.609.794 1.009v1.052c0 .29-.133.455-.343.455-.19 0-.342-.137-.342-.455v-.988c0-.334-.15-.512-.485-.512h-.165c-.335 0-.97.176-.97.652 0 .478 0 2.057 0 2.107 0 .137-.151.288-.343.288-.214 0-.343-.137-.343-.288V14.31c0-.384-.069-.685-.481-.685h-.138c-.343 0-.998.158-.998.712v.895c0 .177-.137.288-.33.288-.193 0-.33-.111-.33-.288v-.865c0-.36-.082-.686-.453-.686h-.16c-.343 0-.983.177-.983.669v.865c0 .202-.124.329-.316.329-.193 0-.317-.127-.317-.329v-2.25c0-.236-.261-.368-.261-.368l-.832.479s-.172.088-.172.227c0 .138 0 3.25 0 3.336 0 .31.016.619.133.885.117.265.426.404.75.404.234 0 .939-.04 1.12-.59.18-.02.058 0 .09 0 .062 0 .138.02.192.035.248.07.535.303.535.765 0 .314-.01 1.306-.01 1.306s-.028.177-.124.233c-.096.056-.233.015-.233.015l-.789-.26s-.054-.2-.054-.113c0-.89.003-1.117.003-1.152 0-.235-.159-.437-.422-.437h-.193c-.262 0-.425.213-.425.437v1.282c0 .075-.02.135-.088.177-.069.042-.158.014-.158.014l-1.232-.409s-.102-.034-.102-.138c0-.104 0-4.08 0-4.21 0-.128.096-.272.207-.312l1.87-.707s.22-.05.365.055c.146.106.2.274.2.364v.187c0 .166.234.236.234.236s.15-.79.343-.079c.166 0 .316.07.454.281.262.397.729 1.112.729 1.112s.096.144.096.227c0 .236-.193.236-.193.236h-.193c-.386 0-.64-.302-.64-.302s-.124-.15-.124.013c0 .047-.003 1.306-.003 1.306s-.014.07-.069.112c-.054.041-.151.034-.151.034l-.789-.26s-.055-.02-.055-.112c0-.93.003-1.104.003-1.153 0-.235-.158-.437-.413-.437h-.193c-.262 0-.425.213-.425.437v1.105c0 .184-.179.247-.179.247l-.868-.288s-.081-.027-.081-.108c0-.082.004-4.607.004-4.607C9.125 14.556 9.262 14.39 9.4 14.335l4.6-1.54c.27-.36.4-.5.434.096.34.102.034 2.023.034 2.023s.04.203-.8.266c-.117.063-.316.035-.316.035l-2.022-.688s-.081-.028-.081-.11c0-.08 0-.454 0-.531 0-.177.166-.272.166-.272s2.08-.708 2.162-.737c.083-.28.143-.21.18.069.25.063.042.45.042.45l.67 2.244"></path>
+                        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0Zm3.566 17.16c-.069.135-.151.172-.346.172h-.15c-.138 0-.273-.055-.418-.167-.161-.125-1.066-.933-1.513-1.303-.296-.243-.503-.303-.686-.303-.151 0-.358.018-.639.563-.274.5361-1.432.588-.543.588-.163 0-.54-.03-.79-.585-.25-.553-.932-2.248-.932-2.248s-.279-.441-.922-.441c-.667 0-2.203.057-3.41.627-1.21.57-1.854 1.781-1.854 1.781l.835.492s.103-.56.542-.56h.106c.388 0 .794.609.794 1.009v1.052c0 .29-.133.455-.343.455-.19 0-.342-.137-.342-.455v-.988c0-.334-.15-.512-.485-.512h-.165c-.335 0-.97.176-.97.652 0 .478 0 2.057 0 2.107 0 .137-.151.288-.343.288-.214 0-.343-.137-.343-.288V14.31c0-.384-.069-.685-.481-.685h-.138c-.343 0-.998.158-.998.712v.895c0 .177-.137.288-.33.288-.193 0-.33-.111-.33-.288v-.865c0-.36-.082-.686-.453-.686h-.16c-.343 0-.983.177-.983.669v.865c0 .202-.124.329-.316.329-.193 0-.317-.127-.317-.329v-2.25c0-.236-.261-.368-.261-.368l-.832.479s-.172.088-.172.227c0 .138 0 3.25 0 3.336 0 .31.016.619.133.885.117.265.426.404.75.404.234 0 .939-.04 1.12-.59.18-.02.058 0 .09 0 .062 0 .138.02.192.035.248.07.535.303.535.765 0 .314-.01 1.306-.01 1.306s-.028.177-.124.233c-.096.056-.233.015-.233.015l-.789-.26s-.054-.2-.054-.113c0-.89.003-1.117.003-1.152 0-.235-.159-.437-.422-.437h-.193c-.262 0-.425.213-.425.437v1.282c0 .075-.02.135-.088.177-.069.042-.158.014-.158.014l-1.232-.409s-.102-.034-.102-.138c0-.104 0-4.08 0-4.21 0-.128.096-.272.207-.312l1.87-.707s.22-.05.365.055c.146.106.2.274.2.364v.187c0 .166.234.236.234.236s.15-.79.343-.079c.166 0 .316.07.454.281.262.397.729 1.112.729 1.112s.096.144.096.227c0 .236-.193.236-.193.236h-.193c-.386 0-.64-.302-.64-.302s-.124-.15-.124.013c0 .047-.003 1.306-.003 1.306s-.014.07-.069.112c-.054.041-.151.034-.151.034l-.789-.26s-.055-.02-.055-.112c0-.93.003-1.104.003-1.153 0-.235-.158-.437-.413-.437h-.193c-.262 0-.425.213-.425.437v1.105c0 .184-.179.247-.179.247l-.868-.288s-.081-.027-.081-.108c0-.082.004-4.607.004-4.607C9.125 14.556 9.262 14.39 9.4 14.335l4.6-1.54c.27-.36.4-.5.434.096.34.102.034 2.023.034 2.023s.04.203-.8.266c-.117.063-.316.035-.316.035l-2.022-.688s-.081-.028-.081-.11c0-.08 0-.454 0-.531 0-.177.166-.272.166-.272s2.08-.708 2.162-.737c.083-.28.143-.21.18.069.25.063.042.45.042.45l.67 2.244" />
                       </svg>
                     </div>
                     <div>
                       <h4 className="font-medium">Telegram</h4>
-                      <p className="text-sm text-gray-400">Receive real-time alerts</p>
+                      <p className="text-sm text-gray-400">Get real-time portfolio alerts</p>
                     </div>
                   </div>
                   
@@ -166,12 +186,9 @@ const ConnectSection = () => {
                         Connected
                       </div>
                     ) : (
-                      <Button
-                        variant="light"
-                        onClick={() => connectSocial('telegram')}
-                      >
-                        Connect
-                      </Button>
+                      <div className="text-gray-400 text-sm italic">
+                        Connect wallet first
+                      </div>
                     )}
                   </div>
                 </div>
@@ -183,9 +200,9 @@ const ConnectSection = () => {
                   variant="primary"
                   size="lg"
                   disabled={!connectState.wallet}
-                  onClick={() => window.location.href = '/dashboard'}
+                  onClick={handleNavigateToDashboard}
                 >
-                  {connectState.wallet ? 'Access Dashboard' : 'Connect Wallet to Continue'}
+                  {connectState.wallet ? 'Continue to Setup' : 'Connect Wallet to Continue'}
                 </Button>
                 
                 {!connectState.wallet && (
@@ -199,6 +216,54 @@ const ConnectSection = () => {
                     Social connections are optional but recommended for a better experience.
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-8 bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-xl font-bold mb-4">Why Connect Your Accounts?</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="flex flex-col">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-900/50 flex items-center justify-center mr-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-medium">Real-Time Alerts</h4>
+                </div>
+                <p className="text-sm text-gray-400">
+                  Get instant notifications about market movements and yield opportunities across protocols.
+                </p>
+              </div>
+              
+              <div className="flex flex-col">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 rounded-full bg-green-900/50 flex items-center justify-center mr-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-medium">Portfolio Updates</h4>
+                </div>
+                <p className="text-sm text-gray-400">
+                  Receive regular summaries of your portfolio performance and optimization recommendations.
+                </p>
+              </div>
+              
+              <div className="flex flex-col">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-medium">Community Access</h4>
+                </div>
+                <p className="text-sm text-gray-400">
+                  Join our community of DeFi users, participate in governance, and get exclusive insights.
+                </p>
               </div>
             </div>
           </div>

@@ -6,7 +6,7 @@ import { useWalletContext } from '../../context/WalletContext';
 import WalletConnect from './WalletConnect';
 
 const Navbar = ({ toggleSidebar }) => {
-  const { isConnected, walletProvider, shortenedAddress, balance } = useWalletContext();
+  const { isConnected, walletProvider, shortenedAddress, balance, disconnectWallet } = useWalletContext();
   const [scrolled, setScrolled] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -43,11 +43,7 @@ const Navbar = ({ toggleSidebar }) => {
   }, [showDropdown]);
 
   return (
-    <nav 
-      className={`bg-white dark:bg-dark-lighter px-4 py-2.5 fixed w-full z-20 top-0 left-0 border-b border-gray-200 dark:border-gray-700 ${
-        scrolled ? 'shadow-md' : ''
-      }`}
-    >
+    <nav className={`bg-white dark:bg-dark-lighter px-4 py-2.5 fixed w-full z-20 top-0 left-0 border-b border-gray-200 dark:border-gray-700 ${scrolled ? 'shadow-md' : ''}`}>
       <div className="container flex flex-wrap justify-between items-center mx-auto">
         {/* Mobile menu button */}
         <div className="flex items-center md:hidden">
@@ -148,30 +144,23 @@ const Navbar = ({ toggleSidebar }) => {
 
                 {/* Dropdown menu */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-lighter rounded-md shadow-lg py-1 z-10 border border-gray-200 dark:border-gray-700">
-                    <Link
-                      to="/wallet"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      Wallet Details
-                    </Link>
-                    <Link
-                      to="/settings"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      Settings
-                    </Link>
-                    <button
-                      onClick={() => {
-                        const { disconnectWallet } = useWalletContext();
-                        disconnectWallet();
-                        setShowDropdown(false);
-                      }}
-                      className="w-full text-left block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
+        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-lighter rounded-md shadow-lg py-1 z-10 border border-gray-200 dark:border-gray-700">
+          <Link to="/wallet" className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+            Wallet Details
+          </Link>
+          <Link to="/settings" className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+            Settings
+          </Link>
+          <button
+            onClick={() => {
+              disconnectWallet(); // Use the top-level destructured function
+              setShowDropdown(false);
+            }}
+            className="w-full text-left block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            Disconnect
+          </button>
+        </div>
                 )}
               </div>
             </div>

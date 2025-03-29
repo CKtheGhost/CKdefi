@@ -1,7 +1,8 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
+import Card from "../common/Card";
 import Notifications from "../common/Notifications";
+import CardContent from "../common/Card";
 
 /**
  * Enhanced Onboarding Layout for "CompounDefi"

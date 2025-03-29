@@ -1,0 +1,113 @@
+{
+  "wallet": "0x1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t",
+  "apt": {
+    "amount": "12.5",
+    "price": 10.45,
+    "valueUSD": 130.625
+  },
+  "stAPT": {
+    "amount": "5.2",
+    "valueUSD": 54.6
+  },
+  "sthAPT": {
+    "amount": "3.7",
+    "valueUSD": 38.85
+  },
+  "tAPT": {
+    "amount": "2.1",
+    "valueUSD": 22.05
+  },
+  "dAPT": {
+    "amount": "0.8",
+    "valueUSD": 8.4
+  },
+  "stakedTokens": {
+    "tokens": {
+      "stAPT": {
+        "amount": "5.2",
+        "valueUSD": 54.6,
+        "value": 54.6
+      },
+      "sthAPT": {
+        "amount": "3.7",
+        "valueUSD": 38.85,
+        "value": 38.85
+      },
+      "tAPT": {
+        "amount": "2.1",
+        "valueUSD": 22.05,
+        "value": 22.05
+      },
+      "dAPT": {
+        "amount": "0.8",
+        "valueUSD": 8.4,
+        "value": 8.4
+      }
+    },
+    "totalStakedFormatted": "11.8 APT",
+    "valueUSD": 123.9
+  },
+  "ammLiquidity": {
+    "hasLiquidity": true,
+    "estimatedValueUSD": 85.4,
+    "positions": [
+      {
+        "protocol": "PancakeSwap",
+        "details": {
+          "tokenPair": "APT/USDC"
+        },
+        "valueUSD": 45.2,
+        "valueInApt": 4.32
+      },
+      {
+        "protocol": "Cetus",
+        "details": {
+          "tokenPair": "APT/USDT"
+        },
+        "valueUSD": 40.2,
+        "valueInApt": 3.85
+      }
+    ]
+  },
+  "totalValueUSD": 339.925,
+  "unrealizedGainUSD": 24.5,
+  "performance": {
+    "dailyChange": 1.25,
+    "weeklyChange": 4.8,
+    "monthlyChange": 7.2
+  },
+  "historicalData": {
+    "timestamps": [
+      "2025-03-21",
+      "2025-03-22",
+      "2025-03-23",
+      "2025-03-24",
+      "2025-03-25",
+      "2025-03-26",
+      "2025-03-27",
+      "2025-03-28"
+    ],
+    "values": [
+      312.5,
+      315.2,
+      320.1,
+      318.4,
+      325.6,
+      332.1,
+      337.5,
+      339.925
+    ],
+    "apy": [
+      7.2,
+      7.3,
+      7.3,
+      7.2,
+      7.4,
+      7.5,
+      7.5,
+      7.6
+    ]
+  },
+  "riskProfile": "balanced",
+  "lastUpdated": "2025-03-28T12:34:56Z"
+}

@@ -56,4 +56,7 @@ const usePortfolio = (initialAddress) => {
   };
 };
 
+// Remove this problematic line:
+// import usePortfolio from './usePortfolio';
+
 export default usePortfolio;

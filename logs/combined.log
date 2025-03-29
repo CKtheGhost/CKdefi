@@ -12,3 +12,28 @@
 {"level":"info","message":"Connected to MongoDB successfully","service":"compoundefi","timestamp":"2025-03-27 23:07:31"}
 {"level":"info","message":"CompounDefi server running on port 3000","service":"compoundefi","timestamp":"2025-03-27 23:07:31"}
 {"level":"info","message":"Environment: production","service":"compoundefi","timestamp":"2025-03-27 23:07:31"}
+{"level":"info","message":"Anthropic API client initialized successfully","service":"compoundefi","timestamp":"2025-03-27 23:11:06"}
+{"level":"info","message":"OpenAI API client initialized successfully","service":"compoundefi","timestamp":"2025-03-27 23:11:06"}
+{"level":"info","message":"Connected to MongoDB successfully","service":"compoundefi","timestamp":"2025-03-27 23:11:07"}
+{"level":"info","message":"CompounDefi server running on port 3000","service":"compoundefi","timestamp":"2025-03-27 23:11:07"}
+{"level":"info","message":"Environment: production","service":"compoundefi","timestamp":"2025-03-27 23:11:07"}
+{"level":"info","message":"Anthropic API client initialized successfully","service":"compoundefi","timestamp":"2025-03-27 23:11:12"}
+{"level":"info","message":"OpenAI API client initialized successfully","service":"compoundefi","timestamp":"2025-03-27 23:11:12"}
+{"level":"info","message":"Connected to MongoDB successfully","service":"compoundefi","timestamp":"2025-03-27 23:11:13"}
+{"level":"info","message":"CompounDefi server running on port 3000","service":"compoundefi","timestamp":"2025-03-27 23:11:13"}
+{"level":"info","message":"Environment: production","service":"compoundefi","timestamp":"2025-03-27 23:11:13"}
+{"level":"info","message":"Anthropic API client initialized successfully","service":"compoundefi","timestamp":"2025-03-28 02:35:11"}
+{"level":"info","message":"OpenAI API client initialized successfully","service":"compoundefi","timestamp":"2025-03-28 02:35:11"}
+{"level":"info","message":"Connected to MongoDB successfully","service":"compoundefi","timestamp":"2025-03-28 02:35:12"}
+{"level":"info","message":"CompounDefi server running on port 3000","service":"compoundefi","timestamp":"2025-03-28 02:35:12"}
+{"level":"info","message":"Environment: production","service":"compoundefi","timestamp":"2025-03-28 02:35:12"}
+{"level":"info","message":"Anthropic API client initialized successfully","service":"compoundefi","timestamp":"2025-03-28 02:45:18"}
+{"level":"info","message":"OpenAI API client initialized successfully","service":"compoundefi","timestamp":"2025-03-28 02:45:18"}
+{"level":"info","message":"Connected to MongoDB successfully","service":"compoundefi","timestamp":"2025-03-28 02:45:18"}
+{"level":"info","message":"CompounDefi server running on port 3000","service":"compoundefi","timestamp":"2025-03-28 02:45:18"}
+{"level":"info","message":"Environment: production","service":"compoundefi","timestamp":"2025-03-28 02:45:18"}
+{"level":"info","message":"Anthropic API client initialized successfully","service":"compoundefi","timestamp":"2025-03-28 02:58:53"}
+{"level":"info","message":"OpenAI API client initialized successfully","service":"compoundefi","timestamp":"2025-03-28 02:58:53"}
+{"level":"info","message":"Connected to MongoDB successfully","service":"compoundefi","timestamp":"2025-03-28 02:58:54"}
+{"level":"info","message":"CompounDefi server running on port 3000","service":"compoundefi","timestamp":"2025-03-28 02:58:54"}
+{"level":"info","message":"Environment: production","service":"compoundefi","timestamp":"2025-03-28 02:58:54"}

@@ -1,205 +1,114 @@
-// src/context/TransactionContext.jsx
-import React, { createContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useContext, useCallback } from 'react';
 import { useWalletContext } from './WalletContext';
 import { useNotification } from './NotificationContext';
 
-// Create context
+// Create transaction context
 export const TransactionContext = createContext();
 
+/**
+ * TransactionProvider component to manage transaction state and execution
+ */
 export const TransactionProvider = ({ children }) => {
-  const { wallet, address, isConnected } = useWalletContext();
-  const { showNotification } = useNotification();
-  
   const [pendingTransactions, setPendingTransactions] = useState([]);
+  const [completedTransactions, setCompletedTransactions] = useState([]);
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [isExecuting, setIsExecuting] = useState(false);
-  const [status, setStatus] = useState('idle'); // idle, pending, success, error
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
-
-  // Load transaction history from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedTransactions = localStorage.getItem('recentTransactions');
-      if (savedTransactions) {
-        setRecentTransactions(JSON.parse(savedTransactions));
-      }
-    } catch (error) {
-      console.error('Failed to load transaction history:', error);
-    }
-  }, []);
-
-  // Save transaction history to localStorage when it changes
-  useEffect(() => {
-    if (recentTransactions.length > 0) {
-      localStorage.setItem('recentTransactions', JSON.stringify(recentTransactions));
-    }
-  }, [recentTransactions]);
-
-  // Execute a single transaction
-  const executeTransaction = useCallback(async (payload) => {
-    if (!isConnected || !wallet) {
-      setError('Wallet not connected');
-      showNotification('Please connect your wallet to execute transactions', 'error');
+  
+  const { wallet, isConnected, executeTransaction } = useWalletContext();
+  const { showNotification } = useNotification();
+  
+  /**
+   * Execute a single transaction
+   * @param {Object} txPayload - Transaction payload
+   * @param {Object} options - Additional options
+   * @returns {Promise<Object>} - Transaction result
+   */
+  const executeSingleTransaction = useCallback(async (txPayload, options = {}) => {
+    if (!isConnected) {
       throw new Error('Wallet not connected');
     }
-
+    
     try {
-      setIsExecuting(true);
-      setStatus('pending');
-      setError(null);
-      
-      // Create transaction payload
-      const transaction = {
-        ...payload,
-        sender: address,
-      };
-
       // Add to pending transactions
       const txId = Date.now().toString();
-      const pendingTx = { 
-        id: txId, 
-        payload: transaction, 
+      const pendingTx = {
+        id: txId,
+        payload: txPayload,
         status: 'pending',
         timestamp: Date.now()
       };
       
       setPendingTransactions(prev => [...prev, pendingTx]);
-
-      // Send transaction to wallet for signing
-      const response = await wallet.signAndSubmitTransaction(transaction);
       
-      // Wait for transaction to complete
-      // In a real implementation, you'd use an Aptos client to wait for the transaction
-      // For demo purposes, we'll simulate a successful result
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Execute transaction
+      const result = await executeTransaction(txPayload);
       
-      const txResult = {
-        success: true,
-        hash: response.hash || `tx_${txId}`,
-        gas_used: Math.floor(Math.random() * 1000),
-        vm_status: "Executed successfully"
+      // Update completed transactions
+      const completedTx = {
+        ...pendingTx,
+        status: 'completed',
+        result,
+        completedAt: Date.now()
       };
       
-      // Update transaction history
-      const txRecord = {
-        id: txId,
-        hash: txResult.hash,
-        success: txResult.success,
-        timestamp: Date.now(),
-        type: payload.function?.split('::').pop() || 'transaction',
-        gasFee: txResult.gas_used || 0,
-        payload: transaction
-      };
-      
-      setRecentTransactions(prev => [txRecord, ...prev]);
+      setCompletedTransactions(prev => [...prev, completedTx]);
+      updateRecentTransactions(completedTx);
       
       // Remove from pending
       setPendingTransactions(prev => prev.filter(tx => tx.id !== txId));
       
-      // Update status and result
-      setStatus('success');
-      setResult(txResult);
-      
-      // Show notification
-      showNotification(
-        'Transaction completed successfully',
-        'success'
-      );
-      
-      return txResult;
+      return result;
     } catch (error) {
-      console.error('Transaction failed:', error);
+      // Handle error
+      const failedTx = {
+        id: txId,
+        payload: txPayload,
+        status: 'failed',
+        error: error.message || 'Transaction failed',
+        timestamp: Date.now()
+      };
       
-      setStatus('error');
-      setError(error.message || 'Transaction failed');
+      setCompletedTransactions(prev => [...prev, failedTx]);
+      updateRecentTransactions(failedTx);
       
-      showNotification(`Transaction failed: ${error.message}`, 'error');
+      // Remove from pending
+      setPendingTransactions(prev => prev.filter(tx => tx.id !== txId));
+      
       throw error;
-    } finally {
-      setIsExecuting(false);
     }
-  }, [wallet, address, isConnected, showNotification]);
-
-  // Execute multiple transactions as a strategy
-  const executeStrategyTransaction = useCallback(async (strategy, options = {}) => {
-    if (!strategy || !strategy.operations || strategy.operations.length === 0) {
-      throw new Error('Invalid strategy: no operations defined');
-    }
-    
-    const results = {
-      success: true,
-      operations: [],
-      failedOperations: [],
-      timestamp: Date.now()
-    };
-    
-    // Execute each operation sequentially
-    for (const operation of strategy.operations) {
-      try {
-        // Prepare transaction payload
-        const payload = {
-          function: `${operation.contractAddress}${operation.functionName}`,
-          type_arguments: [],
-          arguments: operation.arguments || [operation.amount]
-        };
-        
-        // Execute transaction
-        const result = await executeTransaction(payload);
-        
-        // Add to successful operations
-        results.operations.push({
-          ...operation,
-          hash: result.hash,
-          status: 'success'
-        });
-      } catch (error) {
-        console.error(`Operation failed: ${operation.type} on ${operation.protocol}`, error);
-        
-        // Add to failed operations
-        results.failedOperations.push({
-          ...operation,
-          error: error.message,
-          status: 'failed'
-        });
-        
-        results.success = false;
-      }
+  }, [isConnected, executeTransaction]);
+  
+  /**
+   * Execute a strategy consisting of multiple transactions
+   * @param {Array} operations - Array of operations to execute
+   * @param {Object} options - Additional options
+   * @returns {Promise<Object>} - Execution results
+   */
+  const executeStrategy = useCallback(async (operations, options = {}) => {
+    if (!isConnected) {
+      throw new Error('Wallet not connected');
     }
     
-    return results;
-  }, [executeTransaction]);
-
-  // Execute AI-recommended strategy
-  const executeAIStrategy = useCallback(async (operations) => {
     if (!operations || operations.length === 0) {
-      throw new Error('No operations provided for strategy execution');
+      throw new Error('No operations provided for execution');
     }
-
+    
+    setIsExecuting(true);
+    showNotification('Starting strategy execution...', 'info');
+    
     try {
-      setIsExecuting(true);
-      setStatus('pending');
-      setError(null);
-      
       const results = {
         success: true,
         operations: [],
         failedOperations: [],
-        timestamp: Date.now()
+        startTime: Date.now()
       };
       
-      // Show strategy execution notification
-      showNotification('Executing investment strategy...', 'info');
-      
-      // Execute each operation sequentially
-      for (let i = 0; i < operations.length; i++) {
-        const operation = operations[i];
-        
+      // Execute operations sequentially
+      for (const operation of operations) {
         try {
-          // Convert amount to octas (Aptos uses 8 decimal places)
-          const amountInOctas = Math.floor(parseFloat(operation.amount) * 100000000).toString();
-          
           // Create transaction payload
+          const amountInOctas = Math.floor(parseFloat(operation.amount) * 100000000).toString();
           const txPayload = {
             function: `${operation.contractAddress}${operation.functionName}`,
             type_arguments: [],
@@ -207,20 +116,17 @@ export const TransactionProvider = ({ children }) => {
           };
           
           // Execute transaction
-          const txResult = await executeTransaction(txPayload);
+          const txResult = await executeSingleTransaction(txPayload, options);
           
           // Add to successful operations
           results.operations.push({
             ...operation,
-            hash: txResult.hash,
+            result: txResult,
             status: 'success'
           });
           
-          // Show success notification for each step
-          showNotification(
-            `Successfully executed ${operation.type} on ${operation.protocol}`,
-            'success'
-          );
+          // Show success notification
+          showNotification(`Successfully executed ${operation.type} on ${operation.protocol}`, 'success');
           
         } catch (error) {
           console.error(`Operation failed: ${operation.type} on ${operation.protocol}`, error);
@@ -232,79 +138,117 @@ export const TransactionProvider = ({ children }) => {
             status: 'failed'
           });
           
-          results.success = false;
-          
           // Show error notification
-          showNotification(
-            `Failed to execute ${operation.type} on ${operation.protocol}: ${error.message}`,
-            'error'
-          );
+          showNotification(`Failed to execute ${operation.type} on ${operation.protocol}: ${error.message}`, 'error');
+          
+          results.success = false;
         }
       }
       
-      // Update status and result
-      setStatus(results.success ? 'success' : 'partial');
-      setResult(results);
+      // Add final metrics
+      results.endTime = Date.now();
+      results.duration = results.endTime - results.startTime;
+      results.totalOperations = operations.length;
+      results.successfulOperations = results.operations.length;
       
       // Show final notification
       showNotification(
         results.success 
           ? `Strategy executed successfully! ${results.operations.length} operations completed.` 
-          : `Strategy completed with ${results.failedOperations.length} failures out of ${operations.length} operations.`,
+          : `Strategy execution completed with ${results.failedOperations.length} failures.`,
         results.success ? 'success' : 'warning'
       );
       
       return results;
     } catch (error) {
-      console.error('Strategy execution failed:', error);
-      
-      setStatus('error');
-      setError(error.message || 'Strategy execution failed');
-      
+      console.error('Strategy execution error:', error);
       showNotification(`Strategy execution failed: ${error.message}`, 'error');
-      throw error;
+      return { success: false, error: error.message };
     } finally {
       setIsExecuting(false);
     }
-  }, [executeTransaction, showNotification]);
+  }, [isConnected, executeSingleTransaction, showNotification]);
 
-  // Add a transaction to history (for tracking external transactions)
+  /**
+   * Add a transaction to the transaction history
+   * @param {Object} transaction - Transaction to add
+   */
   const addTransaction = useCallback((transaction) => {
-    setRecentTransactions(prev => [transaction, ...prev]);
+    // Add to completed transactions
+    setCompletedTransactions(prev => [...prev, {
+      ...transaction,
+      added: Date.now()
+    }]);
+    
+    // Update recent transactions
+    updateRecentTransactions(transaction);
   }, []);
-
-  // Clear transaction history
+  
+  /**
+   * Update recent transactions list
+   * @param {Object} transaction - Transaction to add
+   */
+  const updateRecentTransactions = useCallback((transaction) => {
+    setRecentTransactions(prev => {
+      // Add new transaction to the start of the array
+      const updated = [transaction, ...prev];
+      
+      // Keep only the 10 most recent transactions
+      if (updated.length > 10) {
+        updated.length = 10;
+      }
+      
+      return updated;
+    });
+  }, []);
+  
+  /**
+   * Clear all transaction history
+   */
   const clearTransactionHistory = useCallback(() => {
+    setCompletedTransactions([]);
     setRecentTransactions([]);
-    localStorage.removeItem('recentTransactions');
   }, []);
+  
+  /**
+   * Get transaction by ID
+   * @param {string} id - Transaction ID
+   * @returns {Object|null} - Transaction or null if not found
+   */
+  const getTransactionById = useCallback((id) => {
+    return [...pendingTransactions, ...completedTransactions].find(tx => tx.id === id) || null;
+  }, [pendingTransactions, completedTransactions]);
+
+  // Context value
+  const contextValue = {
+    pendingTransactions,
+    completedTransactions,
+    recentTransactions,
+    isExecuting,
+    executeSingleTransaction,
+    executeStrategy,
+    addTransaction,
+    clearTransactionHistory,
+    getTransactionById
+  };
 
   return (
-    <TransactionContext.Provider
-      value={{
-        pendingTransactions,
-        recentTransactions,
-        isExecuting,
-        status,
-        error,
-        result,
-        executeTransaction,
-        executeStrategyTransaction,
-        executeAIStrategy,
-        addTransaction,
-        clearTransactionHistory
-      }}
-    >
+    <TransactionContext.Provider value={contextValue}>
       {children}
     </TransactionContext.Provider>
   );
 };
 
-// Custom hook to use the Transaction context
+/**
+ * Hook to use transaction context
+ * @returns {Object} - Transaction context
+ */
 export const useTransactionContext = () => {
-  const context = React.useContext(TransactionContext);
-  if (context === undefined) {
+  const context = useContext(TransactionContext);
+  if (!context) {
     throw new Error('useTransactionContext must be used within a TransactionProvider');
   }
   return context;
 };
+
+export default TransactionContext;

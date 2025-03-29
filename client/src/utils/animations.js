@@ -307,7 +307,7 @@ export const pulse = (element, duration = 300, intensity = 1.05, count = 1) => {
   doPulse();
 };
 
-export default {
+const animations = {
   showToast,
   slideIn,
   slideOut,
@@ -315,5 +315,6 @@ export default {
   fadeOut,
   scale,
   pulse,
- showNotification
 };
+
+export default animations;

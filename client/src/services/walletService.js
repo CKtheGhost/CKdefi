@@ -1,45 +1,453 @@
-import { AptosClient, FaucetClient, TokenClient, CoinClient } from 'aptos';
-import { Types } from 'aptos';
+/**
+ * Wallet service for interacting with blockchain wallets
+ * Supports Petra, Martian, Pontem, and other Aptos wallets
+ */
 
-// Supported wallet providers
+// Available wallet providers
 const WALLET_PROVIDERS = {
   PETRA: 'petra',
   MARTIAN: 'martian',
   PONTEM: 'pontem',
   RISE: 'rise',
-  // Add other wallet providers as needed
+  FEWCHA: 'fewcha'
 };
 
 class WalletService {
-  constructor(network = 'mainnet') {
-    this.network = network;
-    this.client = this.getClientForNetwork(network);
-    this.coinClient = new CoinClient(this.client);
-    this.tokenClient = new TokenClient(this.client);
-    this.currentProvider = null;
-    this.connectedAddress = null;
+  constructor() {
+    this.connectedWallet = null;
+    this.walletProvider = null;
+    this.address = null;
+    this.publicKey = null;
+    this.networkInfo = null;
+    this.isConnected = false;
+    this.listeners = [];
+    this.aptosClient = null;
   }
 
-  // Initialize client based on selected network
-  getClientForNetwork(network) {
-    const networkUrls = {
-      mainnet: 'https://fullnode.mainnet.aptoslabs.com/v1',
-      testnet: 'https://fullnode.testnet.aptoslabs.com/v1',
-      devnet: 'https://fullnode.devnet.aptoslabs.com/v1',
-      local: 'http://localhost:8080/v1',
+  /**
+   * Initialize the wallet service
+   */
+  init() {
+    this.detectWallets();
+    this.checkPreviousConnection();
+    this.setupWindowListeners();
+  }
+
+  /**
+   * Detect available wallet providers in the browser
+   * @returns {Array} Available wallets
+   */
+  detectWallets() {
+    const availableWallets = [];
+
+    if (window.aptos) {
+      availableWallets.push({
+        name: 'Petra',
+        provider: WALLET_PROVIDERS.PETRA,
+        icon: '/assets/images/wallets/petra.png',
+        instance: window.aptos,
+        installed: true
+      });
+    }
+
+    if (window.martian) {
+      availableWallets.push({
+        name: 'Martian',
+        provider: WALLET_PROVIDERS.MARTIAN,
+        icon: '/assets/images/wallets/martian.png',
+        instance: window.martian,
+        installed: true
+      });
+    }
+
+    if (window.pontem) {
+      availableWallets.push({
+        name: 'Pontem',
+        provider: WALLET_PROVIDERS.PONTEM,
+        icon: '/assets/images/wallets/pontem.png',
+        instance: window.pontem,
+        installed: true
+      });
+    }
+
+    // Add Rise Wallet if available
+    if (window.rise) {
+      availableWallets.push({
+        name: 'Rise Wallet',
+        provider: WALLET_PROVIDERS.RISE,
+        icon: '/assets/images/wallets/rise.png',
+        instance: window.rise,
+        installed: true
+      });
+    }
+
+    // Add other wallets as needed
+
+    this.availableWallets = availableWallets;
+    return availableWallets;
+  }
+
+  /**
+   * Check for previous wallet connection and restore it
+   */
+  async checkPreviousConnection() {
+    try {
+      const savedProvider = localStorage.getItem('walletProvider');
+      const savedAddress = localStorage.getItem('walletAddress');
+      
+      if (savedProvider && savedAddress) {
+        const wallet = this.availableWallets.find(w => w.provider === savedProvider);
+        
+        if (wallet && wallet.installed) {
+          // Attempt to reconnect
+          await this.connectWallet(wallet.provider);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore previous wallet connection:', error);
+      this.clearSavedConnection();
+    }
+  }
+
+  /**
+   * Set up window event listeners for wallet changes
+   */
+  setupWindowListeners() {
+    // Listen for account changes
+    window.addEventListener('aptos#accountChanged', this.handleAccountChanged.bind(this));
+    window.addEventListener('martian#accountChanged', this.handleAccountChanged.bind(this));
+    window.addEventListener('pontem#accountChanged', this.handleAccountChanged.bind(this));
+    
+    // Listen for network changes
+    window.addEventListener('aptos#networkChanged', this.handleNetworkChanged.bind(this));
+    window.addEventListener('martian#networkChanged', this.handleNetworkChanged.bind(this));
+    window.addEventListener('pontem#networkChanged', this.handleNetworkChanged.bind(this));
+    
+    // Listen for disconnect events
+    window.addEventListener('aptos#disconnect', this.handleDisconnect.bind(this));
+    window.addEventListener('martian#disconnect', this.handleDisconnect.bind(this));
+    window.addEventListener('pontem#disconnect', this.handleDisconnect.bind(this));
+  }
+
+  /**
+   * Handle account change event
+   * @param {Event} event - Account changed event
+   */
+  async handleAccountChanged(event) {
+    console.log('Account changed:', event);
+    
+    try {
+      // Update wallet information
+      if (this.connectedWallet) {
+        const accountInfo = await this.connectedWallet.account();
+        this.updateWalletInfo(accountInfo);
+        
+        // Notify listeners
+        this.notifyListeners('accountChanged', accountInfo);
+      }
+    } catch (error) {
+      console.error('Error handling account change:', error);
+      // If account info can't be retrieved, disconnect
+      this.disconnect();
+    }
+  }
+
+  /**
+   * Handle network change event
+   * @param {Event} event - Network changed event
+   */
+  async handleNetworkChanged(event) {
+    console.log('Network changed:', event);
+    
+    try {
+      // Update network information
+      if (this.connectedWallet) {
+        const network = await this.connectedWallet.network();
+        this.networkInfo = network;
+        
+        // Notify listeners
+        this.notifyListeners('networkChanged', network);
+      }
+    } catch (error) {
+      console.error('Error handling network change:', error);
+    }
+  }
+
+  /**
+   * Handle wallet disconnect event
+   */
+  handleDisconnect() {
+    this.disconnect();
+    // Notify listeners
+    this.notifyListeners('disconnect');
+  }
+
+  /**
+   * Connect to a wallet
+   * @param {string} provider - Wallet provider name
+   * @returns {Object} Connection result
+   */
+  async connectWallet(provider) {
+    try {
+      // Find the wallet provider
+      const wallet = this.availableWallets.find(w => w.provider === provider);
+      
+      if (!wallet || !wallet.installed) {
+        throw new Error(`Wallet ${provider} not found or not installed`);
+      }
+      
+      // Connect to wallet
+      const response = await wallet.instance.connect();
+      const accountInfo = await wallet.instance.account();
+      const network = await wallet.instance.network();
+      
+      // Update wallet information
+      this.connectedWallet = wallet.instance;
+      this.walletProvider = wallet.provider;
+      this.updateWalletInfo(accountInfo);
+      this.networkInfo = network;
+      this.isConnected = true;
+      
+      // Save connection info
+      this.saveConnection();
+      
+      // Notify listeners
+      this.notifyListeners('connect', this.getWalletInfo());
+      
+      return this.getWalletInfo();
+    } catch (error) {
+      console.error('Wallet connection error:', error);
+      this.disconnect();
+      throw error;
+    }
+  }
+
+  /**
+   * Update wallet information
+   * @param {Object} accountInfo - Account information from wallet
+   */
+  updateWalletInfo(accountInfo) {
+    if (accountInfo) {
+      this.address = accountInfo.address;
+      this.publicKey = accountInfo.publicKey;
+    }
+  }
+
+  /**
+   * Disconnect from current wallet
+   */
+  disconnect() {
+    if (this.connectedWallet) {
+      // Try to call disconnect on the wallet if available
+      try {
+        if (typeof this.connectedWallet.disconnect === 'function') {
+          this.connectedWallet.disconnect();
+        }
+      } catch (error) {
+        console.warn('Error disconnecting wallet:', error);
+      }
+    }
+    
+    // Reset wallet state
+    this.connectedWallet = null;
+    this.walletProvider = null;
+    this.address = null;
+    this.publicKey = null;
+    this.isConnected = false;
+    
+    // Clear saved connection
+    this.clearSavedConnection();
+    
+    // Notify listeners
+    this.notifyListeners('disconnect');
+  }
+
+  /**
+   * Save connection info to localStorage
+   */
+  saveConnection() {
+    if (this.walletProvider && this.address) {
+      localStorage.setItem('walletProvider', this.walletProvider);
+      localStorage.setItem('walletAddress', this.address);
+    }
+  }
+
+  /**
+   * Clear saved connection info
+   */
+  clearSavedConnection() {
+    localStorage.removeItem('walletProvider');
+    localStorage.removeItem('walletAddress');
+  }
+
+  /**
+   * Get wallet information
+   * @returns {Object} Wallet information
+   */
+  getWalletInfo() {
+    return {
+      provider: this.walletProvider,
+      address: this.address,
+      publicKey: this.publicKey,
+      isConnected: this.isConnected,
+      network: this.networkInfo,
+      walletName: this.availableWallets.find(w => w.provider === this.walletProvider)?.name || 'Unknown'
     };
-
-    const url = networkUrls[network] || networkUrls.mainnet;
-    return new AptosClient(url);
   }
 
-  // Get the Aptos client instance
-  getClient() {
-    return this.client;
+  /**
+   * Add a listener for wallet events
+   * @param {Function} listener - Listener function
+   */
+  addListener(listener) {
+    if (typeof listener === 'function' && !this.listeners.includes(listener)) {
+      this.listeners.push(listener);
+    }
   }
 
-  // Check if wallet extension is installed
-  async checkWalletExtension(provider) {
+  /**
+   * Remove a listener
+   * @param {Function} listener - Listener to remove
+   */
+  removeListener(listener) {
+    this.listeners = this.listeners.filter(l => l !== listener);
+  }
+
+  /**
+   * Notify all listeners of an event
+   * @param {string} event - Event name
+   * @param {any} data - Event data
+   */
+  notifyListeners(event, data) {
+    this.listeners.forEach(listener => {
+      try {
+        listener(event, data);
+      } catch (error) {
+        console.error('Error in wallet listener:', error);
+      }
+    });
+  }
+
+  /**
+   * Execute a transaction
+   * @param {Object} payload - Transaction payload
+   * @param {Object} options - Transaction options
+   * @returns {Object} Transaction result
+   */
+  async executeTransaction(payload, options = {}) {
+    if (!this.isConnected || !this.connectedWallet) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      // Add default options if not provided
+      const txOptions = {
+        max_gas_amount: options.maxGasAmount || '2000',
+        gas_unit_price: options.gasUnitPrice || '100',
+        expiration_timestamp_secs: Math.floor(Date.now() / 1000) + 600, // 10 minutes from now
+        ...options
+      };
+      
+      // Execute transaction
+      const pendingTx = await this.connectedWallet.signAndSubmitTransaction(payload, txOptions);
+      
+      // Notify listeners about the pending transaction
+      this.notifyListeners('transactionSubmitted', pendingTx);
+      
+      // If transaction hash is available, you might want to monitor the transaction
+      if (pendingTx.hash) {
+        this.monitorTransaction(pendingTx.hash);
+      }
+      
+      return pendingTx;
+    } catch (error) {
+      console.error('Transaction execution error:', error);
+      
+      // Notify listeners about the transaction error
+      this.notifyListeners('transactionError', error);
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Monitor a transaction's status
+   * @param {string} txHash - Transaction hash
+   */
+  async monitorTransaction(txHash) {
+    // This is a simplified implementation
+    // You might want to use a more sophisticated approach for production
+    
+    try {
+      // Start polling for transaction status
+      const MAX_ATTEMPTS = 10;
+      const POLL_INTERVAL = 2000; // 2 seconds
+      
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        // Wait for the polling interval
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        
+        try {
+          // Fetch transaction status
+          // This assumes you're using the Aptos SDK or have set up aptosClient
+          if (this.aptosClient) {
+            const txInfo = await this.aptosClient.getTransactionByHash(txHash);
+            
+            // Check if transaction is confirmed
+            if (txInfo && txInfo.success !== undefined) {
+              // Transaction is confirmed
+              this.notifyListeners('transactionConfirmed', {
+                hash: txHash,
+                success: txInfo.success,
+                data: txInfo
+              });
+              
+              return txInfo;
+            }
+          }
+        } catch (error) {
+          console.warn(`Attempt ${attempt + 1} to fetch transaction failed:`, error);
+          // Continue polling
+        }
+      }
+      
+      // If we've reached this point, we've exceeded the maximum number of attempts
+      console.warn(`Transaction monitoring exceeded ${MAX_ATTEMPTS} attempts for hash: ${txHash}`);
+      
+    } catch (error) {
+      console.error('Error monitoring transaction:', error);
+    }
+  }
+
+  /**
+   * Sign a message with the connected wallet
+   * @param {string} message - Message to sign
+   * @returns {Object} Signature information
+   */
+  async signMessage(message) {
+    if (!this.isConnected || !this.connectedWallet) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      // Sign message
+      const signResponse = await this.connectedWallet.signMessage({
+        message: message
+      });
+      
+      return signResponse;
+    } catch (error) {
+      console.error('Message signing error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a wallet extension is installed
+   * @param {string} provider - Wallet provider name
+   * @returns {boolean} Whether the wallet is installed
+   */
+  isWalletInstalled(provider) {
     switch (provider) {
       case WALLET_PROVIDERS.PETRA:
         return !!window.aptos;
@@ -49,286 +457,22 @@ class WalletService {
         return !!window.pontem;
       case WALLET_PROVIDERS.RISE:
         return !!window.rise;
+      case WALLET_PROVIDERS.FEWCHA:
+        return !!window.fewcha;
       default:
-        // If no specific provider, check for any compatible wallet
-        return !!(window.aptos || window.martian || window.pontem || window.rise);
+        return false;
     }
   }
 
-  // Get available wallet providers
-  async getAvailableWallets() {
-    const available = [];
-    
-    if (await this.checkWalletExtension(WALLET_PROVIDERS.PETRA)) {
-      available.push({
-        name: 'Petra',
-        id: WALLET_PROVIDERS.PETRA,
-        icon: '/assets/images/wallets/petra.png',
-        installed: true
-      });
-    }
-    
-    if (await this.checkWalletExtension(WALLET_PROVIDERS.MARTIAN)) {
-      available.push({
-        name: 'Martian',
-        id: WALLET_PROVIDERS.MARTIAN,
-        icon: '/assets/images/wallets/martian.png',
-        installed: true
-      });
-    }
-    
-    if (await this.checkWalletExtension(WALLET_PROVIDERS.PONTEM)) {
-      available.push({
-        name: 'Pontem',
-        id: WALLET_PROVIDERS.PONTEM,
-        icon: '/assets/images/wallets/pontem.png',
-        installed: true
-      });
-    }
-    
-    if (await this.checkWalletExtension(WALLET_PROVIDERS.RISE)) {
-      available.push({
-        name: 'Rise',
-        id: WALLET_PROVIDERS.RISE,
-        icon: '/assets/images/wallets/rise.png',
-        installed: true
-      });
-    }
-    
-    // Add non-installed wallets for discovery
-    if (!available.some(wallet => wallet.id === WALLET_PROVIDERS.PETRA)) {
-      available.push({
-        name: 'Petra',
-        id: WALLET_PROVIDERS.PETRA,
-        icon: '/assets/images/wallets/petra.png',
-        installed: false,
-        url: 'https://petra.app/'
-      });
-    }
-    
-    // Add other non-installed wallets as needed
-    
-    return available;
-  }
-
-  // Connect to wallet
-  async connect(preferredProvider = null) {
-    try {
-      // Check if wallet extensions are available
-      const hasExtension = await this.checkWalletExtension(preferredProvider);
-      if (!hasExtension) {
-        throw new Error('No compatible wallet extension found. Please install a wallet extension first.');
-      }
-      
-      // Get provider instance
-      let provider;
-      let providerName;
-      
-      if (preferredProvider === WALLET_PROVIDERS.PETRA || (!preferredProvider && window.aptos)) {
-        provider = window.aptos;
-        providerName = 'Petra';
-      } else if (preferredProvider === WALLET_PROVIDERS.MARTIAN || (!preferredProvider && window.martian)) {
-        provider = window.martian;
-        providerName = 'Martian';
-      } else if (preferredProvider === WALLET_PROVIDERS.PONTEM || (!preferredProvider && window.pontem)) {
-        provider = window.pontem;
-        providerName = 'Pontem';
-      } else if (preferredProvider === WALLET_PROVIDERS.RISE || (!preferredProvider && window.rise)) {
-        provider = window.rise;
-        providerName = 'Rise';
-      } else {
-        throw new Error('No supported wallet provider found');
-      }
-      
-      // Connect to the provider
-      await provider.connect();
-      
-      // Get account information
-      const account = await provider.account();
-      const { address, publicKey } = account;
-      
-      if (!address) {
-        throw new Error('Failed to get wallet address');
-      }
-      
-      // Store connected provider and address
-      this.currentProvider = provider;
-      this.connectedAddress = address;
-      this.providerName = providerName;
-      
-      // Return wallet information
-      return {
-        address,
-        publicKey,
-        provider: preferredProvider || this.detectProviderType(provider),
-        providerName
-      };
-    } catch (error) {
-      console.error('Wallet connection error:', error);
-      throw new Error(`Failed to connect wallet: ${error.message}`);
-    }
-  }
-
-  // Detect wallet provider type
-  detectProviderType(provider) {
-    if (provider === window.aptos) return WALLET_PROVIDERS.PETRA;
-    if (provider === window.martian) return WALLET_PROVIDERS.MARTIAN;
-    if (provider === window.pontem) return WALLET_PROVIDERS.PONTEM;
-    if (provider === window.rise) return WALLET_PROVIDERS.RISE;
-    return 'unknown';
-  }
-
-  // Disconnect from wallet
-  async disconnect() {
-    try {
-      if (this.currentProvider && this.currentProvider.disconnect) {
-        await this.currentProvider.disconnect();
-      }
-      
-      this.currentProvider = null;
-      this.connectedAddress = null;
-      this.providerName = null;
-      
-      return true;
-    } catch (error) {
-      console.error('Wallet disconnection error:', error);
-      throw new Error(`Failed to disconnect wallet: ${error.message}`);
-    }
-  }
-
-  // Get wallet balance
-  async getBalance(address = this.connectedAddress) {
-    if (!address) {
-      throw new Error('Wallet address not provided');
-    }
-    
-    try {
-      const resources = await this.client.getAccountResources(address);
-      
-      // Find APT coin resource
-      const accountResource = resources.find(r => r.type === '0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>');
-      
-      if (!accountResource) {
-        return 0;
-      }
-      
-      // Convert from octas (10^8) to APT
-      const balance = parseInt(accountResource.data.coin.value) / 100000000;
-      
-      return balance;
-    } catch (error) {
-      console.error('Balance fetch error:', error);
-      throw new Error(`Failed to fetch balance: ${error.message}`);
-    }
-  }
-
-  // Execute transaction
-  async executeTransaction(payload, options = {}) {
-    if (!this.currentProvider || !this.connectedAddress) {
-      throw new Error('Wallet not connected');
-    }
-    
-    try {
-      // Create transaction payload
-      const txPayload = {
-        function: payload.function,
-        type_arguments: payload.type_arguments || [],
-        arguments: payload.arguments || []
-      };
-      
-      // Set transaction options
-      const txOptions = {
-        max_gas_amount: options.maxGasAmount || '1000',
-        gas_unit_price: options.gasUnitPrice || '100',
-        ...options
-      };
-      
-      // Sign and submit transaction
-      const pendingTransaction = await this.currentProvider.signAndSubmitTransaction(txPayload, txOptions);
-      
-      // Wait for transaction confirmation
-      const txResult = await this.client.waitForTransactionWithResult(
-        pendingTransaction.hash,
-        { timeoutSecs: options.timeoutSecs || 30 }
-      );
-      
-      // Check transaction status
-      if (txResult.success === false) {
-        throw new Error('Transaction failed: ' + (txResult.vm_status || 'Unknown error'));
-      }
-      
-      return {
-        success: true,
-        hash: pendingTransaction.hash,
-        result: txResult
-      };
-    } catch (error) {
-      console.error('Transaction execution error:', error);
-      throw new Error(`Transaction failed: ${error.message}`);
-    }
-  }
-
-  // Get transaction status
-  async getTransactionStatus(txHash) {
-    try {
-      const txInfo = await this.client.getTransactionByHash(txHash);
-      return {
-        status: txInfo.success ? 'success' : 'failed',
-        info: txInfo
-      };
-    } catch (error) {
-      console.error('Transaction status check error:', error);
-      throw new Error(`Failed to check transaction status: ${error.message}`);
-    }
-  }
-
-  // Get recent transactions
-  async getRecentTransactions(address = this.connectedAddress, limit = 10) {
-    if (!address) {
-      throw new Error('Wallet address not provided');
-    }
-    
-    try {
-      const transactions = await this.client.getAccountTransactions(address, { limit });
-      
-      return transactions.map(tx => {
-        return {
-          hash: tx.hash,
-          type: this.determineTransactionType(tx),
-          timestamp: tx.timestamp,
-          success: tx.success,
-          gasUsed: tx.gas_used,
-          version: tx.version
-        };
-      });
-    } catch (error) {
-      console.error('Recent transactions fetch error:', error);
-      throw new Error(`Failed to fetch recent transactions: ${error.message}`);
-    }
-  }
-
-  // Determine transaction type (staking, swap, etc.)
-  determineTransactionType(tx) {
-    try {
-      if (!tx.payload) return 'unknown';
-      
-      const functionName = tx.payload.function?.toLowerCase() || '';
-      
-      if (functionName.includes('::staking::')) return 'staking';
-      if (functionName.includes('::unstake') || functionName.includes('::withdraw')) return 'unstaking';
-      if (functionName.includes('::swap')) return 'swap';
-      if (functionName.includes('::transfer')) return 'transfer';
-      if (functionName.includes('::add_liquidity')) return 'add liquidity';
-      if (functionName.includes('::remove_liquidity')) return 'remove liquidity';
-      if (functionName.includes('::mint')) return 'mint';
-      if (functionName.includes('::burn')) return 'burn';
-      if (functionName.includes('::claim')) return 'claim rewards';
-      
-      return 'transaction';
-    } catch (error) {
-      return 'transaction';
-    }
+  /**
+   * Initialize the Aptos client
+   * @param {Object} client - Aptos client instance
+   */
+  setAptosClient(client) {
+    this.aptosClient = client;
   }
 }
 
-export default WalletService;
+// Create and export a singleton instance
+const walletService = new WalletService();
+export default walletService;

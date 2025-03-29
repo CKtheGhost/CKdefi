@@ -1,6 +1,6 @@
 // server/index.js
 require('dotenv').config();
-const express = require('express');
+const routes = require('./routes');
 const cors = require('cors');
 const compression = require('compression');
 const helmet = require('helmet');
@@ -21,11 +21,11 @@ app.use(helmet()); // Security headers
 app.use(cors());   // CORS support
 app.use(compression()); // Compress responses
 app.use(express.json()); // Parse JSON requests
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded requests
+app.use(express.urlencoded({ extended: true }));
 app.use(metricsMiddleware); // Collect metrics
 
 // Routes
-app.use('/api', routes);
+app.use('/api', rateLimiter, routes);
 app.get('/metrics', getMetrics); // Metrics endpoint
 
 // Serve static files from the React app (in production)

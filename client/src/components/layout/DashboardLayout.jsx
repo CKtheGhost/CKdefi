@@ -1,7 +1,6 @@
 // DashboardLayout.jsx - Main application layout for CompounDefi dashboard
 
-// src/components/layout/DashboardLayout.jsx
-// Fix the import paths:
+import { useState, useEffect } from 'react'; // Added import
 import { useWalletContext } from '../../context/WalletContext';
 import Navbar from '../common/Navbar';
 import Sidebar from '../common/Sidebar';
@@ -16,7 +15,6 @@ const DashboardLayout = ({ children }) => {
   const { isConnected, portfolioLoading } = useWalletContext();
 
   useEffect(() => {
-    // Check API status on component mount
     const verifyApiStatus = async () => {
       try {
         await checkApiStatus();
@@ -25,8 +23,6 @@ const DashboardLayout = ({ children }) => {
         console.error('API status check failed:', error);
         setApiOnline(false);
       } finally {
-        // Mark app as ready even if API is offline
-        // We'll show appropriate messages in the UI
         setAppReady(true);
       }
     };
