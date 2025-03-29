@@ -1,209 +1,290 @@
-// Nexus-level DataContext.js
-// Retains the original data fetching and storage logic, while adding
-// advanced error handling, improved logging, and performance considerations.
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api from '../services/api';
 
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-
-// Create context
-export const DataContext = createContext(null);
+// Create data context
+const DataContext = createContext();
 
 export const DataProvider = ({ children }) => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [portfolioData, setPortfolioData] = useState(null);
-  const [stakingData, setStakingData] = useState(null);
+  // Market data state
   const [marketData, setMarketData] = useState(null);
-  const [newsData, setNewsData] = useState([]);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [error, setError] = useState(null);
-  const [recommendationHistory, setRecommendationHistory] = useState([]);
-
-  /**
-   * Main data fetch triggered on mount and at intervals (e.g., 5 minutes).
-   */
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
+  const [tokenData, setTokenData] = useState(null);
+  const [protocolData, setProtocolData] = useState(null);
+  const [newsData, setNewsData] = useState(null);
+  const [isLoadingMarket, setIsLoadingMarket] = useState(false);
+  const [marketError, setMarketError] = useState(null);
+  
+  // Staking data state
+  const [stakingData, setStakingData] = useState(null);
+  const [isLoadingStaking, setIsLoadingStaking] = useState(false);
+  const [stakingError, setStakingError] = useState(null);
+  
+  // Fetch market overview data
+  const fetchMarketOverview = useCallback(async () => {
+    setIsLoadingMarket(true);
+    setMarketError(null);
+    
     try {
-      await Promise.all([
-        fetchPortfolioData(),
-        fetchStakingData(),
-        fetchMarketData(),
-        fetchNewsData(),
-      ]);
-      setLastUpdated(new Date());
-      setError(null);
-    } catch (err) {
-      console.error('[DataContext] Error fetching data:', err);
-      setError('Failed to load data. Please try again.');
+      const response = await api.get('/api/market/overview');
+      setMarketData(response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching market overview:', error);
+      setMarketError('Failed to load market data');
+      return null;
     } finally {
-      setIsLoading(false);
+      setIsLoadingMarket(false);
     }
   }, []);
 
-  // On mount, initial fetch plus periodic refresh every 5 minutes
-  useEffect(() => {
-    fetchData();
-    const intervalId = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(intervalId);
-  }, [fetchData]);
-
-  // Mocked portfolio data fetch
-  const fetchPortfolioData = async (walletAddress) => {
+  // Fetch token data
+  const fetchTokenData = useCallback(async () => {
+    setIsLoadingMarket(true);
+    
     try {
-      // Mock data
-      const mockData = {
-        apt: { amount: '10.5', valueUSD: 105.0 },
-        stAPT: { amount: '5.2', valueUSD: 54.6 },
-        tAPT: { amount: '0', valueUSD: 0 },
-        totalValueUSD: 159.6,
+      const response = await api.get('/api/tokens/latest');
+      setTokenData(response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching token data:', error);
+      return null;
+    } finally {
+      setIsLoadingMarket(false);
+    }
+  }, []);
+
+  // Fetch protocol data
+  const fetchProtocolData = useCallback(async () => {
+    setIsLoadingStaking(true);
+    setStakingError(null);
+    
+    try {
+      const response = await api.get('/api/staking/rates');
+      setProtocolData(response.data.protocols);
+      setStakingData(response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching protocol data:', error);
+      setStakingError('Failed to load protocol data');
+      return null;
+    } finally {
+      setIsLoadingStaking(false);
+    }
+  }, []);
+
+  // Fetch news data
+  const fetchNewsData = useCallback(async () => {
+    try {
+      const response = await api.get('/api/news/latest');
+      setNewsData(response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching news data:', error);
+      return null;
+    }
+  }, []);
+
+  // Compare protocols by APR
+  const compareProtocols = useCallback((protocolNames = []) => {
+    if (!protocolData) return null;
+    
+    const filteredProtocols = {};
+    
+    if (protocolNames.length > 0) {
+      // Filter protocols by name
+      protocolNames.forEach(name => {
+        if (protocolData[name.toLowerCase()]) {
+          filteredProtocols[name.toLowerCase()] = protocolData[name.toLowerCase()];
+        }
+      });
+    } else {
+      // Use all protocols
+      Object.assign(filteredProtocols, protocolData);
+    }
+    
+    // Create comparison data
+    const comparison = Object.entries(filteredProtocols).map(([name, data]) => {
+      // Extract APR data
+      const stakingApr = data.staking?.apr || 0;
+      const lendingApr = data.lending?.apr || 0;
+      const liquidityApr = data.liquidity?.apr || 0;
+      
+      // Calculate maximum APR
+      const maxApr = Math.max(stakingApr, lendingApr, liquidityApr);
+      
+      // Determine best product
+      let bestProduct = '';
+      if (maxApr === stakingApr && stakingApr > 0) bestProduct = 'Staking';
+      else if (maxApr === lendingApr && lendingApr > 0) bestProduct = 'Lending';
+      else if (maxApr === liquidityApr && liquidityApr > 0) bestProduct = 'Liquidity';
+      
+      return {
+        name,
+        stakingApr,
+        lendingApr,
+        liquidityApr,
+        maxApr,
+        bestProduct,
+        riskLevel: data.riskLevel || 'medium'
       };
-      setPortfolioData(mockData);
-      return mockData;
-    } catch (err) {
-      console.error('[DataContext] fetchPortfolioData error:', err);
-      throw err;
-    }
-  };
+    });
+    
+    // Sort by maximum APR
+    const sortedComparison = comparison.sort((a, b) => b.maxApr - a.maxApr);
+    
+    return sortedComparison;
+  }, [protocolData]);
 
-  // Mocked staking data fetch
-  const fetchStakingData = async () => {
-    try {
-      const mockStaking = {
-        protocols: {
-          amnis: {
-            staking: { apr: '7.2', product: 'stAPT' },
-            blendedStrategy: { apr: '7.6' },
-          },
-          thala: {
-            staking: { apr: '7.5', product: 'sthAPT' },
-            blendedStrategy: { apr: '7.9' },
-          },
-          tortuga: {
-            staking: { apr: '7.0', product: 'tAPT' },
-            blendedStrategy: { apr: '7.0' },
-          },
-          ditto: {
-            staking: { apr: '7.8', product: 'dAPT' },
-            blendedStrategy: { apr: '7.8' },
-          },
-        },
-      };
-      setStakingData(mockStaking);
-      return mockStaking;
-    } catch (err) {
-      console.error('[DataContext] fetchStakingData error:', err);
-      throw err;
-    }
-  };
-
-  // Mocked market data fetch
-  const fetchMarketData = async () => {
-    try {
-      const mockMarkets = {
-        tokens: [
-          { symbol: 'APT', price: 10.0, change24h: 2.5 },
-          { symbol: 'stAPT', price: 10.5, change24h: 2.6 },
-          { symbol: 'tAPT', price: 10.3, change24h: 2.4 },
-        ],
-      };
-      setMarketData(mockMarkets);
-      return mockMarkets;
-    } catch (err) {
-      console.error('[DataContext] fetchMarketData error:', err);
-      throw err;
-    }
-  };
-
-  // Mocked news data fetch
-  const fetchNewsData = async () => {
-    try {
-      const mockNews = [
-        { id: 1, title: 'New Staking Protocol Launches on Aptos', date: '2025-03-20', url: '#' },
-        { id: 2, title: 'Aptos DeFi TVL Reaches New ATH', date: '2025-03-25', url: '#' },
-      ];
-      setNewsData(mockNews);
-      return mockNews;
-    } catch (err) {
-      console.error('[DataContext] fetchNewsData error:', err);
-      throw err;
-    }
-  };
-
-  /**
-   * Load previously stored recommendation history (mock).
-   */
-  const loadRecommendationHistory = async () => {
-    try {
-      // Mock data
-      const history = [
-        {
-          title: 'Balanced Yield Strategy',
-          timestamp: new Date(Date.now() - 86400000).toISOString(),
-          totalApr: '7.8',
-          allocation: [
-            { protocol: 'Amnis', product: 'Liquid Staking', percentage: 40 },
-            { protocol: 'Thala', product: 'Liquid Staking', percentage: 30 },
-            { protocol: 'PancakeSwap', product: 'AMM Liquidity', percentage: 20 },
-            { protocol: 'Ditto', product: 'Liquid Staking', percentage: 10 },
-          ],
-        },
-        {
-          title: 'Conservative Staking',
-          timestamp: new Date(Date.now() - 7 * 86400000).toISOString(),
-          totalApr: '7.3',
-          allocation: [
-            { protocol: 'Amnis', product: 'Liquid Staking', percentage: 50 },
-            { protocol: 'Thala', product: 'Liquid Staking', percentage: 50 },
-          ],
-        },
-      ];
-      setRecommendationHistory(history);
-      return history;
-    } catch (err) {
-      console.error('[DataContext] loadRecommendationHistory error:', err);
-      return [];
-    }
-  };
-
-  /**
-   * Save a new recommendation in memory (and possibly localStorage).
-   */
-  const saveRecommendation = (recommendation) => {
-    if (!recommendation) return;
-    const recWithTime = {
-      ...recommendation,
-      timestamp: recommendation.timestamp || new Date().toISOString(),
+  // Get protocol details
+  const getProtocolDetails = useCallback((protocolName) => {
+    if (!protocolData || !protocolName) return null;
+    
+    const protocol = protocolData[protocolName.toLowerCase()];
+    
+    if (!protocol) return null;
+    
+    return {
+      name: protocolName,
+      ...protocol
     };
-    setRecommendationHistory((prev) => [recWithTime, ...prev]);
-    return recWithTime;
-  };
+  }, [protocolData]);
 
+  // Get trending tokens
+  const getTrendingTokens = useCallback((limit = 5) => {
+    if (!tokenData || !tokenData.coins) return [];
+    
+    // Sort by 24h change (absolute value to include both gainers and losers)
+    const sorted = [...tokenData.coins].sort((a, b) => 
+      Math.abs(b.change24h) - Math.abs(a.change24h)
+    );
+    
+    return sorted.slice(0, limit);
+  }, [tokenData]);
+
+  // Get top gainers
+  const getTopGainers = useCallback((limit = 5) => {
+    if (!tokenData || !tokenData.coins) return [];
+    
+    // Sort by 24h change (positive first)
+    const sorted = [...tokenData.coins]
+      .filter(token => token.change24h > 0)
+      .sort((a, b) => b.change24h - a.change24h);
+    
+    return sorted.slice(0, limit);
+  }, [tokenData]);
+
+  // Get top losers
+  const getTopLosers = useCallback((limit = 5) => {
+    if (!tokenData || !tokenData.coins) return [];
+    
+    // Sort by 24h change (negative first)
+    const sorted = [...tokenData.coins]
+      .filter(token => token.change24h < 0)
+      .sort((a, b) => a.change24h - b.change24h);
+    
+    return sorted.slice(0, limit);
+  }, [tokenData]);
+
+  // Get protocol strategies for a specific risk profile
+  const getProtocolStrategies = useCallback((riskProfile = 'balanced') => {
+    if (!stakingData || !stakingData.strategies) return null;
+    
+    return stakingData.strategies[riskProfile.toLowerCase()] || null;
+  }, [stakingData]);
+
+  // Get recommended protocol based on risk profile
+  const getRecommendedProtocol = useCallback((riskProfile = 'balanced') => {
+    if (!stakingData || !stakingData.strategies) return null;
+    
+    const strategy = stakingData.strategies[riskProfile.toLowerCase()];
+    
+    if (!strategy || !strategy.allocation || strategy.allocation.length === 0) {
+      return stakingData.recommendedProtocol || null;
+    }
+    
+    // Return the protocol with the highest allocation percentage
+    const topAllocation = [...strategy.allocation].sort((a, b) => b.percentage - a.percentage)[0];
+    
+    return topAllocation.protocol;
+  }, [stakingData]);
+
+  // Load initial data
+  useEffect(() => {
+    // Fetch all data on initial load
+    const loadInitialData = async () => {
+      await Promise.all([
+        fetchMarketOverview(),
+        fetchTokenData(),
+        fetchProtocolData(),
+        fetchNewsData()
+      ]);
+    };
+    
+    loadInitialData();
+    
+    // Set up refresh intervals
+    const marketInterval = setInterval(() => {
+      fetchMarketOverview();
+      fetchTokenData();
+    }, 60000); // Every 1 minute
+    
+    const protocolInterval = setInterval(() => {
+      fetchProtocolData();
+    }, 300000); // Every 5 minutes
+    
+    const newsInterval = setInterval(() => {
+      fetchNewsData();
+    }, 600000); // Every 10 minutes
+    
+    return () => {
+      clearInterval(marketInterval);
+      clearInterval(protocolInterval);
+      clearInterval(newsInterval);
+    };
+  }, [fetchMarketOverview, fetchTokenData, fetchProtocolData, fetchNewsData]);
+
+  // Context value
   const value = {
-    isLoading,
-    portfolioData,
-    stakingData,
+    // Market data
     marketData,
+    tokenData,
+    protocolData,
+    stakingData,
     newsData,
-    lastUpdated,
-    error,
-    recommendationHistory,
-
-    // Methods
-    refreshData: fetchData,
-    fetchPortfolioData,
-    loadRecommendationHistory,
-    saveRecommendation,
+    isLoadingMarket,
+    marketError,
+    isLoadingStaking,
+    stakingError,
+    
+    // Data fetch functions
+    fetchMarketOverview,
+    fetchTokenData,
+    fetchProtocolData,
+    fetchNewsData,
+    
+    // Data utility functions
+    compareProtocols,
+    getProtocolDetails,
+    getTrendingTokens,
+    getTopGainers,
+    getTopLosers,
+    getProtocolStrategies,
+    getRecommendedProtocol
   };
 
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+  return (
+    <DataContext.Provider value={value}>
+      {children}
+    </DataContext.Provider>
+  );
 };
 
-// Custom hook
+// Custom hook to use the data context
 export const useData = () => {
-  const ctx = useContext(DataContext);
-  if (!ctx) {
-    throw new Error('[useData] must be used within a DataProvider.');
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error('useData must be used within a DataProvider');
   }
-  return ctx;
+  return context;
 };
 
 export default DataContext;

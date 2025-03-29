@@ -1,320 +1,245 @@
 // src/utils/animations.js
-// Utility functions for animations and toast notifications
+// Animation utilities for CompounDefi UI
 
 /**
- * Show a toast notification
- * @param {Object} options - Toast options
- * @param {string} options.message - Notification message
- * @param {string} options.type - Notification type ('success', 'error', 'warning', 'info')
- * @param {number} options.duration - Duration in milliseconds
- * @param {Function} options.onClose - Callback when toast closes
+ * Animation presets for common UI interactions
+ * Compatible with Framer Motion and React Spring
  */
-export const showToast = (options) => {
-  const { message, type = 'info', duration = 3000, onClose } = options;
-  
-  // Check if toast container exists, create if not
-  let toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) {
-    toastContainer = document.createElement('div');
-    toastContainer.id = 'toast-container';
-    toastContainer.className = 'fixed top-4 right-4 z-50 flex flex-col space-y-2';
-    document.body.appendChild(toastContainer);
-  }
-  
-  // Create toast element
-  const toast = document.createElement('div');
-  toast.className = `transform transition-all duration-300 ease-in-out translate-x-full opacity-0 flex items-center p-4 rounded-lg shadow-lg max-w-md ${getToastColorClass(type)}`;
-  
-  // Toast content
-  toast.innerHTML = `
-    <div class="flex-shrink-0 mr-3">
-      ${getToastIcon(type)}
-    </div>
-    <div class="flex-1">
-      <p class="text-sm font-medium">${message}</p>
-    </div>
-    <button class="ml-4 focus:outline-none opacity-70 hover:opacity-100" aria-label="Close">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-      </svg>
-    </button>
-  `;
-  
-  // Add to container
-  toastContainer.appendChild(toast);
-  
-  // Add click listener to close button
-  const closeButton = toast.querySelector('button');
-  closeButton.addEventListener('click', () => {
-    removeToast(toast);
-  });
-  
-  // Animate in
-  setTimeout(() => {
-    toast.classList.remove('translate-x-full', 'opacity-0');
-  }, 10);
-  
-  // Auto-remove after duration
-  const timeoutId = setTimeout(() => {
-    removeToast(toast);
-  }, duration);
-  
-  // Store timeout ID for potential early removal
-  toast._timeoutId = timeoutId;
-  
-  // Function to remove toast
-  function removeToast(toastElement) {
-    clearTimeout(toastElement._timeoutId);
-    
-    // Animate out
-    toastElement.classList.add('translate-x-full', 'opacity-0');
-    
-    // Remove from DOM after animation
-    setTimeout(() => {
-      if (toastElement.parentNode) {
-        toastElement.parentNode.removeChild(toastElement);
-      }
-      if (onClose) onClose();
-      
-      // Remove container if empty
-      if (toastContainer.children.length === 0) {
-        document.body.removeChild(toastContainer);
-      }
-    }, 300);
+
+// Fade animations
+export const fadeIn = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: 0.3 }
+};
+
+export const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: 20 },
+  transition: { duration: 0.4 }
+};
+
+export const fadeInDown = {
+  initial: { opacity: 0, y: -20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -20 },
+  transition: { duration: 0.4 }
+};
+
+export const fadeInLeft = {
+  initial: { opacity: 0, x: -20 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -20 },
+  transition: { duration: 0.4 }
+};
+
+export const fadeInRight = {
+  initial: { opacity: 0, x: 20 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: 20 },
+  transition: { duration: 0.4 }
+};
+
+// Scale animations
+export const scaleIn = {
+  initial: { opacity: 0, scale: 0.9 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.9 },
+  transition: { duration: 0.3 }
+};
+
+export const scaleInFast = {
+  initial: { opacity: 0, scale: 0.9 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.9 },
+  transition: { duration: 0.2 }
+};
+
+// Slide animations
+export const slideInRight = {
+  initial: { x: '100%' },
+  animate: { x: 0 },
+  exit: { x: '100%' },
+  transition: { type: 'spring', stiffness: 300, damping: 30 }
+};
+
+export const slideInLeft = {
+  initial: { x: '-100%' },
+  animate: { x: 0 },
+  exit: { x: '-100%' },
+  transition: { type: 'spring', stiffness: 300, damping: 30 }
+};
+
+export const slideInUp = {
+  initial: { y: '100%' },
+  animate: { y: 0 },
+  exit: { y: '100%' },
+  transition: { type: 'spring', stiffness: 300, damping: 30 }
+};
+
+export const slideInDown = {
+  initial: { y: '-100%' },
+  animate: { y: 0 },
+  exit: { y: '-100%' },
+  transition: { type: 'spring', stiffness: 300, damping: 30 }
+};
+
+// Special animations
+export const popIn = {
+  initial: { scale: 0.8, opacity: 0 },
+  animate: { scale: 1, opacity: 1 },
+  exit: { scale: 0.8, opacity: 0 },
+  transition: { 
+    type: 'spring',
+    stiffness: 500,
+    damping: 25
   }
 };
 
-/**
- * Get color class for toast type
- * @param {string} type - Toast type
- * @returns {string} CSS class
- */
-function getToastColorClass(type) {
-  switch (type) {
-    case 'success':
-      return 'bg-green-500 text-white';
-    case 'error':
-      return 'bg-red-500 text-white';
-    case 'warning':
-      return 'bg-yellow-500 text-white';
-    case 'info':
-    default:
-      return 'bg-blue-500 text-white';
+export const bounceIn = {
+  initial: { scale: 0 },
+  animate: { scale: 1 },
+  transition: {
+    type: 'spring',
+    stiffness: 400,
+    damping: 10
   }
-}
+};
 
-/**
- * Get icon SVG for toast type
- * @param {string} type - Toast type
- * @returns {string} SVG markup
- */
-function getToastIcon(type) {
-  switch (type) {
-    case 'success':
-      return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-      </svg>`;
-    case 'error':
-      return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-      </svg>`;
-    case 'warning':
-      return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-      </svg>`;
-    case 'info':
-    default:
-      return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-      </svg>`;
-  }
-}
-
-/**
- * Create a slide-in animation
- * @param {HTMLElement} element - Element to animate
- * @param {string} direction - Direction ('left', 'right', 'top', 'bottom')
- * @param {number} duration - Animation duration in ms
- * @param {Function} callback - Callback after animation
- */
-export const slideIn = (element, direction = 'right', duration = 300, callback) => {
-  if (!element) return;
-  
-  // Set initial position
-  const initialTransform = {
-    left: 'translateX(-100%)',
-    right: 'translateX(100%)',
-    top: 'translateY(-100%)',
-    bottom: 'translateY(100%)'
-  }[direction] || 'translateX(100%)';
-  
-  // Apply initial styles
-  element.style.transform = initialTransform;
-  element.style.opacity = '0';
-  element.style.transition = `transform ${duration}ms ease-out, opacity ${duration}ms ease-out`;
-  
-  // Force reflow
-  void element.offsetWidth;
-  
-  // Animate in
-  setTimeout(() => {
-    element.style.transform = 'translate(0)';
-    element.style.opacity = '1';
-    
-    // Callback after animation
-    if (callback) {
-      setTimeout(callback, duration);
+// Staggered animation helpers
+export const staggerContainer = (staggerChildren = 0.05, delayChildren = 0) => ({
+  animate: {
+    transition: {
+      staggerChildren,
+      delayChildren
     }
-  }, 10);
-};
-
-/**
- * Create a slide-out animation
- * @param {HTMLElement} element - Element to animate
- * @param {string} direction - Direction ('left', 'right', 'top', 'bottom')
- * @param {number} duration - Animation duration in ms
- * @param {Function} callback - Callback after animation
- */
-export const slideOut = (element, direction = 'right', duration = 300, callback) => {
-  if (!element) return;
-  
-  // Set final position
-  const finalTransform = {
-    left: 'translateX(-100%)',
-    right: 'translateX(100%)',
-    top: 'translateY(-100%)',
-    bottom: 'translateY(100%)'
-  }[direction] || 'translateX(100%)';
-  
-  // Apply transition
-  element.style.transition = `transform ${duration}ms ease-in, opacity ${duration}ms ease-in`;
-  
-  // Animate out
-  element.style.transform = finalTransform;
-  element.style.opacity = '0';
-  
-  // Callback after animation
-  if (callback) {
-    setTimeout(callback, duration);
   }
-};
+});
 
-/**
- * Fade in animation
- * @param {HTMLElement} element - Element to animate
- * @param {number} duration - Animation duration in ms
- * @param {Function} callback - Callback after animation
- */
-export const fadeIn = (element, duration = 300, callback) => {
-  if (!element) return;
-  
-  // Set initial state
-  element.style.opacity = '0';
-  element.style.transition = `opacity ${duration}ms ease-in`;
-  
-  // Force reflow
-  void element.offsetWidth;
-  
-  // Animate in
-  setTimeout(() => {
-    element.style.opacity = '1';
-    
-    // Callback after animation
-    if (callback) {
-      setTimeout(callback, duration);
+export const staggerItems = (index, delayFactor = 0.05) => ({
+  initial: { opacity: 0, y: 20 },
+  animate: { 
+    opacity: 1, 
+    y: 0,
+    transition: { delay: index * delayFactor }
+  },
+  exit: { opacity: 0, y: 20 }
+});
+
+// Animation for number counters
+export const numberCount = {
+  initial: { opacity: 0 },
+  animate: (custom) => ({
+    opacity: 1,
+    transition: { 
+      duration: custom?.duration || 2,
+      ease: 'easeOut' 
     }
-  }, 10);
+  })
 };
 
-/**
- * Fade out animation
- * @param {HTMLElement} element - Element to animate
- * @param {number} duration - Animation duration in ms
- * @param {Function} callback - Callback after animation
- */
-export const fadeOut = (element, duration = 300, callback) => {
-  if (!element) return;
-  
-  // Set transition
-  element.style.transition = `opacity ${duration}ms ease-out`;
-  
-  // Animate out
-  element.style.opacity = '0';
-  
-  // Callback after animation
-  if (callback) {
-    setTimeout(callback, duration);
-  }
-};
-
-/**
- * Scale animation (grow/shrink)
- * @param {HTMLElement} element - Element to animate
- * @param {number} startScale - Starting scale
- * @param {number} endScale - Ending scale
- * @param {number} duration - Animation duration in ms
- * @param {Function} callback - Callback after animation
- */
-export const scale = (element, startScale = 0.9, endScale = 1, duration = 300, callback) => {
-  if (!element) return;
-  
-  // Set initial scale
-  element.style.transform = `scale(${startScale})`;
-  element.style.transition = `transform ${duration}ms ease-out`;
-  
-  // Force reflow
-  void element.offsetWidth;
-  
-  // Animate to end scale
-  setTimeout(() => {
-    element.style.transform = `scale(${endScale})`;
-    
-    // Callback after animation
-    if (callback) {
-      setTimeout(callback, duration);
+// Animation for charts
+export const chartAnimation = {
+  initial: { opacity: 0, pathLength: 0 },
+  animate: { 
+    opacity: 1, 
+    pathLength: 1,
+    transition: { 
+      duration: 1.5, 
+      ease: 'easeInOut'
     }
-  }, 10);
-};
-
-/**
- * Pulse animation
- * @param {HTMLElement} element - Element to animate
- * @param {number} duration - Animation duration in ms
- * @param {number} intensity - Scale intensity
- * @param {number} count - Number of pulses
- */
-export const pulse = (element, duration = 300, intensity = 1.05, count = 1) => {
-  if (!element) return;
-  
-  let pulseCount = 0;
-  
-  function doPulse() {
-    // Scale up
-    element.style.transition = `transform ${duration/2}ms ease-out`;
-    element.style.transform = `scale(${intensity})`;
-    
-    // Scale back down
-    setTimeout(() => {
-      element.style.transform = 'scale(1)';
-      
-      // Continue pulsing if needed
-      if (++pulseCount < count) {
-        setTimeout(doPulse, duration);
-      }
-    }, duration/2);
   }
-  
-  doPulse();
 };
 
-const animations = {
-  showToast,
-  slideIn,
-  slideOut,
-  fadeIn,
-  fadeOut,
-  scale,
-  pulse,
+// Animation for success/completion
+export const successAnimation = {
+  initial: { scale: 0, opacity: 0 },
+  animate: { 
+    scale: 1, 
+    opacity: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 20
+    }
+  }
 };
 
-export default animations;
+// Animation for loading states
+export const pulseAnimation = {
+  animate: {
+    scale: [1, 1.03, 1],
+    opacity: [0.7, 1, 0.7],
+    transition: {
+      duration: 1.5,
+      repeat: Infinity,
+      repeatType: 'loop'
+    }
+  }
+};
+
+// Animation for notification toast
+export const toastAnimation = {
+  initial: { opacity: 0, y: -20, scale: 0.9 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, scale: 0.9 },
+  transition: { duration: 0.3 }
+};
+
+// Custom hook compatible animation presets for React Spring
+export const springFadeIn = {
+  from: { opacity: 0 },
+  to: { opacity: 1 },
+  config: { tension: 280, friction: 20 }
+};
+
+export const springFadeInUp = {
+  from: { opacity: 0, y: 20 },
+  to: { opacity: 1, y: 0 },
+  config: { tension: 280, friction: 20 }
+};
+
+// Animation for recommendations flow
+export const recommendationStepAnimation = (step, activeStep) => ({
+  opacity: activeStep >= step ? 1 : 0.3,
+  scale: activeStep === step ? 1 : 0.95,
+  y: activeStep > step ? -10 : activeStep === step ? 0 : 10,
+  transition: { duration: 0.4 }
+});
+
+// Animation for portfolio allocation sunburst/donut chart
+export const portfolioChartAnimation = {
+  initial: { opacity: 0, scale: 0.8, rotate: -15 },
+  animate: { 
+    opacity: 1, 
+    scale: 1, 
+    rotate: 0,
+    transition: { 
+      duration: 0.8, 
+      ease: 'easeOut' 
+    }
+  }
+};
+
+// Animation for tabbed interfaces
+export const tabAnimation = {
+  initial: { opacity: 0, height: 0 },
+  animate: { 
+    opacity: 1, 
+    height: 'auto',
+    transition: { 
+      height: { duration: 0.3 },
+      opacity: { duration: 0.2, delay: 0.1 }
+    }
+  },
+  exit: { 
+    opacity: 0, 
+    height: 0,
+    transition: { 
+      height: { duration: 0.3 },
+      opacity: { duration: 0.2 }
+    }
+  }
+};

@@ -1,135 +1,125 @@
-// src/components/wallet/AllocationChart.jsx
+import React, { useMemo } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { usePortfolio } from '../../hooks/usePortfolio';
 
-import React, { useEffect, useRef } from 'react';
-import Chart from 'chart.js/auto';
+const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
 
-const AllocationChart = ({ portfolioData }) => {
-  const chartRef = useRef(null);
-  const chartInstance = useRef(null);
-  
-  useEffect(() => {
-    if (!portfolioData || !chartRef.current) return;
-    
-    // Cleanup previous chart if it exists
-    if (chartInstance.current) {
-      chartInstance.current.destroy();
+const CustomTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white dark:bg-gray-800 p-3 rounded shadow-lg border border-gray-200 dark:border-gray-700">
+        <p className="font-semibold">{data.name}</p>
+        <p className="text-sm">Amount: {parseFloat(data.value).toFixed(2)} APT</p>
+        <p className="text-sm">Value: ${parseFloat(data.valueUSD).toFixed(2)}</p>
+        <p className="text-sm">Allocation: {data.percentage.toFixed(2)}%</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+const AllocationChart = ({ className = "" }) => {
+  const { portfolio, isLoading } = usePortfolio();
+
+  const chartData = useMemo(() => {
+    if (!portfolio || !portfolio.totalValueUSD) return [];
+
+    const allocationData = [];
+    const totalValue = parseFloat(portfolio.totalValueUSD);
+
+    // Native APT
+    if (portfolio.apt && parseFloat(portfolio.apt.amount) > 0) {
+      const valueUSD = parseFloat(portfolio.apt.valueUSD);
+      allocationData.push({
+        name: 'Native APT',
+        value: parseFloat(portfolio.apt.amount),
+        valueUSD,
+        percentage: (valueUSD / totalValue) * 100,
+        type: 'native'
+      });
     }
-    
-    const ctx = chartRef.current.getContext('2d');
-    
-    // Prepare data for chart
-    const allocation = [];
-    const labels = [];
-    const colors = [
-      '#3b82f6', // blue-500
-      '#10b981', // green-500
-      '#8b5cf6', // purple-500
-      '#f59e0b', // amber-500
-      '#ef4444', // red-500
-      '#ec4899', // pink-500
-    ];
-    
-    // Add native APT
-    if (portfolioData.apt && parseFloat(portfolioData.apt.amount) > 0) {
-      allocation.push(parseFloat(portfolioData.apt.valueUSD));
-      labels.push('Native APT');
-    }
-    
-    // Add staked tokens
-    if (portfolioData.stAPT && parseFloat(portfolioData.stAPT.amount) > 0) {
-      allocation.push(parseFloat(portfolioData.stAPT.valueUSD));
-      labels.push('Amnis stAPT');
-    }
-    
-    if (portfolioData.sthAPT && parseFloat(portfolioData.sthAPT.amount) > 0) {
-      allocation.push(parseFloat(portfolioData.sthAPT.valueUSD));
-      labels.push('Thala sthAPT');
-    }
-    
-    if (portfolioData.tAPT && parseFloat(portfolioData.tAPT.amount) > 0) {
-      allocation.push(parseFloat(portfolioData.tAPT.valueUSD));
-      labels.push('Tortuga tAPT');
-    }
-    
-    if (portfolioData.dAPT && parseFloat(portfolioData.dAPT.amount) > 0) {
-      allocation.push(parseFloat(portfolioData.dAPT.valueUSD));
-      labels.push('Ditto dAPT');
-    }
-    
-    // Add AMM liquidity
-    if (portfolioData.ammLiquidity && portfolioData.ammLiquidity.hasLiquidity) {
-      if (portfolioData.ammLiquidity.positions && portfolioData.ammLiquidity.positions.length > 0) {
-        // Add each liquidity position
-        portfolioData.ammLiquidity.positions.forEach(position => {
-          allocation.push(parseFloat(position.valueUSD));
-          labels.push(`${position.protocol} Liquidity`);
+
+    // Staked positions
+    ['stAPT', 'sthAPT', 'tAPT', 'dAPT'].forEach(token => {
+      if (portfolio[token] && parseFloat(portfolio[token].amount) > 0) {
+        const valueUSD = parseFloat(portfolio[token].valueUSD);
+        allocationData.push({
+          name: token,
+          value: parseFloat(portfolio[token].amount),
+          valueUSD,
+          percentage: (valueUSD / totalValue) * 100,
+          type: 'staked'
         });
-      } else {
-        // Add total liquidity if positions not detailed
-        allocation.push(parseFloat(portfolioData.ammLiquidity.estimatedValueUSD));
-        labels.push('AMM Liquidity');
-      }
-    }
-    
-    // Create chart
-    chartInstance.current = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{
-          data: allocation,
-          backgroundColor: colors,
-          borderWidth: 2,
-          borderColor: '#1f2937' // gray-800
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: {
-              color: 'rgba(255, 255, 255, 0.8)',
-              font: {
-                size: 12
-              },
-              padding: 20
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const value = context.raw;
-                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                const percentage = Math.round((value / total) * 100);
-                return `${context.label}: $${value.toLocaleString()} (${percentage}%)`;
-              }
-            }
-          }
-        },
-        cutout: '60%'
       }
     });
-    
-    return () => {
-      if (chartInstance.current) {
-        chartInstance.current.destroy();
-      }
-    };
-  }, [portfolioData]);
-  
+
+    // Liquidity positions
+    if (portfolio.ammLiquidity && portfolio.ammLiquidity.hasLiquidity) {
+      const valueUSD = parseFloat(portfolio.ammLiquidity.estimatedValueUSD);
+      allocationData.push({
+        name: 'AMM Liquidity',
+        value: 0, // No direct APT amount for liquidity
+        valueUSD,
+        percentage: (valueUSD / totalValue) * 100,
+        type: 'liquidity'
+      });
+    }
+
+    return allocationData;
+  }, [portfolio]);
+
+  if (isLoading) {
+    return (
+      <div className={`flex items-center justify-center h-64 ${className}`}>
+        <div className="animate-pulse text-gray-400">Loading allocation data...</div>
+      </div>
+    );
+  }
+
+  if (chartData.length === 0) {
+    return (
+      <div className={`flex flex-col items-center justify-center h-64 ${className}`}>
+        <p className="text-gray-500 dark:text-gray-400">No allocation data available</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Connect your wallet to see your portfolio allocation</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Portfolio Allocation</h3>
-      <div className="relative h-80">
-        {portfolioData && Object.keys(portfolioData).length > 0 ? (
-          <canvas ref={chartRef} id="allocation-chart"></canvas>
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-gray-400">No portfolio data available</p>
+    <div className={`${className}`}>
+      <h3 className="font-semibold text-lg mb-4">Portfolio Allocation</h3>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="valueUSD"
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {chartData.map((item, index) => (
+          <div key={index} className="flex items-center">
+            <div 
+              className="w-3 h-3 rounded-full mr-2" 
+              style={{ backgroundColor: COLORS[index % COLORS.length] }}
+            />
+            <span className="text-sm">{item.name}: {item.percentage.toFixed(1)}%</span>
           </div>
-        )}
+        ))}
       </div>
     </div>
   );

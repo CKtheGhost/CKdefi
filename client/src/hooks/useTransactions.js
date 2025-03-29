@@ -1,254 +1,391 @@
-import React, { createContext, useState, useContext, useCallback } from 'react';
-import { useWalletContext } from './WalletContext';
-import { useNotification } from './NotificationContext';
+// src/hooks/useTransactions.js
+import { useState, useEffect, useCallback, useContext } from 'react';
+import axios from 'axios';
+import { WalletContext } from '../context/WalletContext';
+import { NotificationContext } from '../context/NotificationContext';
 
-// Create transaction context
-export const TransactionContext = createContext();
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
 /**
- * TransactionProvider component to manage transaction state and execution
+ * Hook for managing blockchain transactions and execution history
+ * @returns {Object} Transaction methods and state
  */
-export const TransactionProvider = ({ children }) => {
-  const [pendingTransactions, setPendingTransactions] = useState([]);
-  const [completedTransactions, setCompletedTransactions] = useState([]);
-  const [recentTransactions, setRecentTransactions] = useState([]);
-  const [isExecuting, setIsExecuting] = useState(false);
+const useTransactions = () => {
+  const { account, signAndSubmitTransaction, network } = useContext(WalletContext);
+  const { showNotification } = useContext(NotificationContext);
   
-  const { wallet, isConnected, executeTransaction } = useWalletContext();
-  const { showNotification } = useNotification();
+  const [transactions, setTransactions] = useState([]);
+  const [transactionHistory, setTransactionHistory] = useState([]);
+  const [pendingTransactions, setPendingTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [currentTransaction, setCurrentTransaction] = useState(null);
   
   /**
-   * Execute a single transaction
-   * @param {Object} txPayload - Transaction payload
-   * @param {Object} options - Additional options
-   * @returns {Promise<Object>} - Transaction result
+   * Execute a single operation on a DeFi protocol
+   * @param {Object} operation - Operation details
+   * @returns {Promise<Object>} Transaction result
    */
-  const executeSingleTransaction = useCallback(async (txPayload, options = {}) => {
-    if (!isConnected) {
-      throw new Error('Wallet not connected');
-    }
-    
+  const executeOperation = useCallback(async (operation) => {
     try {
+      if (!account?.address) {
+        throw new Error('Wallet not connected');
+      }
+      
+      setIsLoading(true);
+      setError(null);
+      
+      // Validate operation parameters
+      if (!operation.protocol || !operation.type || !operation.amount) {
+        throw new Error('Invalid operation: protocol, type, and amount are required');
+      }
+      
+      // Get contract address if not provided
+      if (!operation.contractAddress) {
+        // Fetch contract address from server
+        const contractsResponse = await axios.get(`${API_URL}/contracts`);
+        const contracts = contractsResponse.data.contracts || {};
+        operation.contractAddress = contracts[operation.protocol.toLowerCase()];
+      }
+      
+      if (!operation.contractAddress) {
+        throw new Error(`Contract address not found for protocol: ${operation.protocol}`);
+      }
+      
+      // Simulate transaction first to check for errors
+      const simulationResponse = await axios.post(`${API_URL}/wallet/${account.address}/simulate-transaction`, {
+        transaction: {
+          sender: account.address,
+          function: operation.functionName 
+            ? `${operation.contractAddress}${operation.functionName}`
+            : `${operation.contractAddress}::${operation.type}::execute`,
+          arguments: [
+            // Convert APT amount to octas (APT * 10^8)
+            (parseFloat(operation.amount) * 100000000).toString()
+          ],
+          type_arguments: operation.typeArguments || []
+        }
+      });
+      
+      if (!simulationResponse.data.success) {
+        throw new Error(`Simulation failed: ${simulationResponse.data.vmStatus || 'Unknown error'}`);
+      }
+      
+      // Create transaction payload
+      const payload = {
+        function: operation.functionName 
+          ? `${operation.contractAddress}${operation.functionName}`
+          : `${operation.contractAddress}::${operation.type}::execute`,
+        type_arguments: operation.typeArguments || [],
+        arguments: [
+          // Convert APT amount to octas (APT * 10^8)
+          (parseFloat(operation.amount) * 100000000).toString()
+        ]
+      };
+      
+      setCurrentTransaction({
+        ...operation,
+        status: 'signing',
+        timestamp: new Date().toISOString()
+      });
+      
+      // Sign and submit transaction
+      const result = await signAndSubmitTransaction({
+        sender: account.address,
+        payload
+      });
+      
+      const txHash = result.hash;
+      
+      // Update transaction status
+      setCurrentTransaction(prev => ({
+        ...prev,
+        hash: txHash,
+        status: 'pending'
+      }));
+      
       // Add to pending transactions
-      const txId = Date.now().toString();
       const pendingTx = {
-        id: txId,
-        payload: txPayload,
+        hash: txHash,
+        protocol: operation.protocol,
+        type: operation.type,
+        amount: operation.amount,
         status: 'pending',
-        timestamp: Date.now()
+        timestamp: new Date().toISOString()
       };
       
       setPendingTransactions(prev => [...prev, pendingTx]);
       
-      // Execute transaction
-      const result = await executeTransaction(txPayload);
+      // Register transaction with server for tracking
+      await axios.post(`${API_URL}/transactions/register`, {
+        walletAddress: account.address,
+        hash: txHash,
+        protocol: operation.protocol,
+        type: operation.type,
+        amount: operation.amount,
+        contractAddress: operation.contractAddress
+      });
       
-      // Update completed transactions
-      const completedTx = {
-        ...pendingTx,
-        status: 'completed',
-        result,
-        completedAt: Date.now()
+      // Start transaction monitoring
+      monitorTransaction(txHash);
+      
+      // Show notification
+      showNotification({
+        type: 'info',
+        title: 'Transaction Submitted',
+        message: `Your ${operation.type} transaction on ${operation.protocol} has been submitted.`
+      });
+      
+      return {
+        success: true,
+        hash: txHash,
+        protocol: operation.protocol,
+        type: operation.type,
+        amount: operation.amount,
+        status: 'pending',
+        timestamp: new Date().toISOString()
       };
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || err.message;
+      setError(errorMsg);
       
-      setCompletedTransactions(prev => [...prev, completedTx]);
-      updateRecentTransactions(completedTx);
+      showNotification({
+        type: 'error',
+        title: 'Transaction Failed',
+        message: errorMsg
+      });
       
-      // Remove from pending
-      setPendingTransactions(prev => prev.filter(tx => tx.id !== txId));
-      
-      return result;
-    } catch (error) {
-      // Handle error
-      const failedTx = {
-        id: txId,
-        payload: txPayload,
-        status: 'failed',
-        error: error.message || 'Transaction failed',
-        timestamp: Date.now()
-      };
-      
-      setCompletedTransactions(prev => [...prev, failedTx]);
-      updateRecentTransactions(failedTx);
-      
-      // Remove from pending
-      setPendingTransactions(prev => prev.filter(tx => tx.id !== txId));
-      
-      throw error;
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
-  }, [isConnected, executeTransaction]);
+  }, [account, signAndSubmitTransaction, showNotification]);
   
   /**
-   * Execute a strategy consisting of multiple transactions
+   * Execute multiple operations in sequence
    * @param {Array} operations - Array of operations to execute
-   * @param {Object} options - Additional options
-   * @returns {Promise<Object>} - Execution results
+   * @returns {Promise<Object>} Execution results
    */
-  const executeStrategy = useCallback(async (operations, options = {}) => {
-    if (!isConnected) {
+  const executeOperations = useCallback(async (operations) => {
+    if (!Array.isArray(operations) || operations.length === 0) {
+      throw new Error('No operations provided');
+    }
+    
+    if (!account?.address) {
       throw new Error('Wallet not connected');
     }
     
-    if (!operations || operations.length === 0) {
-      throw new Error('No operations provided for execution');
-    }
+    const results = {
+      operations: [],
+      failedOperations: [],
+      success: true
+    };
     
-    setIsExecuting(true);
-    showNotification('Starting strategy execution...', 'info');
-    
-    try {
-      const results = {
-        success: true,
-        operations: [],
-        failedOperations: [],
-        startTime: Date.now()
-      };
-      
-      // Execute operations sequentially
-      for (const operation of operations) {
-        try {
-          // Create transaction payload
-          const amountInOctas = Math.floor(parseFloat(operation.amount) * 100000000).toString();
-          const txPayload = {
-            function: `${operation.contractAddress}${operation.functionName}`,
-            type_arguments: [],
-            arguments: [amountInOctas]
-          };
-          
-          // Execute transaction
-          const txResult = await executeSingleTransaction(txPayload, options);
-          
-          // Add to successful operations
-          results.operations.push({
-            ...operation,
-            result: txResult,
-            status: 'success'
-          });
-          
-          // Show success notification
-          showNotification(`Successfully executed ${operation.type} on ${operation.protocol}`, 'success');
-          
-        } catch (error) {
-          console.error(`Operation failed: ${operation.type} on ${operation.protocol}`, error);
-          
-          // Add to failed operations
-          results.failedOperations.push({
-            ...operation,
-            error: error.message,
-            status: 'failed'
-          });
-          
-          // Show error notification
-          showNotification(`Failed to execute ${operation.type} on ${operation.protocol}: ${error.message}`, 'error');
-          
-          results.success = false;
+    // Execute operations sequentially
+    for (const operation of operations) {
+      try {
+        const result = await executeOperation(operation);
+        results.operations.push(result);
+      } catch (error) {
+        results.failedOperations.push({
+          ...operation,
+          error: error.message
+        });
+        results.success = false;
+        
+        // Stop execution if a critical operation fails
+        if (operation.critical) {
+          break;
         }
       }
-      
-      // Add final metrics
-      results.endTime = Date.now();
-      results.duration = results.endTime - results.startTime;
-      results.totalOperations = operations.length;
-      results.successfulOperations = results.operations.length;
-      
-      // Show final notification
-      showNotification(
-        results.success 
-          ? `Strategy executed successfully! ${results.operations.length} operations completed.` 
-          : `Strategy execution completed with ${results.failedOperations.length} failures.`,
-        results.success ? 'success' : 'warning'
-      );
-      
-      return results;
-    } catch (error) {
-      console.error('Strategy execution error:', error);
-      showNotification(`Strategy execution failed: ${error.message}`, 'error');
-      return { success: false, error: error.message };
-    } finally {
-      setIsExecuting(false);
     }
-  }, [isConnected, executeSingleTransaction, showNotification]);
-
-  /**
-   * Add a transaction to the transaction history
-   * @param {Object} transaction - Transaction to add
-   */
-  const addTransaction = useCallback((transaction) => {
-    // Add to completed transactions
-    setCompletedTransactions(prev => [...prev, {
-      ...transaction,
-      added: Date.now()
-    }]);
     
-    // Update recent transactions
-    updateRecentTransactions(transaction);
-  }, []);
+    return results;
+  }, [account, executeOperation]);
   
   /**
-   * Update recent transactions list
-   * @param {Object} transaction - Transaction to add
+   * Monitor transaction status until confirmed
+   * @param {string} txHash - Transaction hash to monitor
+   * @returns {Promise<Object>} Final transaction status
    */
-  const updateRecentTransactions = useCallback((transaction) => {
-    setRecentTransactions(prev => {
-      // Add new transaction to the start of the array
-      const updated = [transaction, ...prev];
+  const monitorTransaction = useCallback(async (txHash) => {
+    try {
+      // Initialize poll count
+      let pollCount = 0;
+      const maxPolls = 30; // Maximum number of status checks
+      const pollInterval = 2000; // 2 seconds between checks
       
-      // Keep only the 10 most recent transactions
-      if (updated.length > 10) {
-        updated.length = 10;
+      const checkStatus = async () => {
+        if (pollCount >= maxPolls) {
+          updateTransactionStatus(txHash, 'timeout');
+          return;
+        }
+        
+        pollCount++;
+        
+        try {
+          const response = await axios.get(`${API_URL}/transactions/${txHash}`);
+          const status = response.data.status;
+          
+          // Update transaction status in state
+          updateTransactionStatus(txHash, status);
+          
+          if (status === 'confirmed' || status === 'failed') {
+            // Transaction is finalized, stop polling
+            const finalStatus = status === 'confirmed' ? 'success' : 'failed';
+            
+            showNotification({
+              type: finalStatus,
+              title: `Transaction ${finalStatus === 'success' ? 'Successful' : 'Failed'}`,
+              message: `Your transaction ${finalStatus === 'success' ? 'has been confirmed' : 'has failed'}.`
+            });
+            
+            return;
+          }
+          
+          // Continue polling
+          setTimeout(checkStatus, pollInterval);
+        } catch (err) {
+          console.error('Error checking transaction status:', err);
+          setTimeout(checkStatus, pollInterval);
+        }
+      };
+      
+      // Start polling
+      await checkStatus();
+    } catch (err) {
+      console.error('Error monitoring transaction:', err);
+    }
+  }, [showNotification]);
+  
+  /**
+   * Update transaction status in state
+   * @param {string} txHash - Transaction hash
+   * @param {string} status - New status
+   */
+  const updateTransactionStatus = useCallback((txHash, status) => {
+    // Update pending transactions
+    setPendingTransactions(prev => 
+      prev.map(tx => 
+        tx.hash === txHash 
+          ? { ...tx, status } 
+          : tx
+      ).filter(tx => tx.status === 'pending' || Date.now() - new Date(tx.timestamp).getTime() < 24 * 60 * 60 * 1000)
+    );
+    
+    // Update current transaction if it matches
+    setCurrentTransaction(prev => 
+      prev && prev.hash === txHash 
+        ? { ...prev, status } 
+        : prev
+    );
+    
+    // Update transaction history
+    setTransactionHistory(prev => {
+      const existingIndex = prev.findIndex(tx => tx.hash === txHash);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = { ...updated[existingIndex], status };
+        return updated;
       }
-      
-      return updated;
+      return prev;
     });
   }, []);
   
   /**
-   * Clear all transaction history
+   * Fetch transaction history for the connected wallet
+   * @param {number} limit - Number of transactions to fetch
+   * @returns {Promise<Array>} Transaction history
    */
-  const clearTransactionHistory = useCallback(() => {
-    setCompletedTransactions([]);
-    setRecentTransactions([]);
-  }, []);
+  const getTransactionHistory = useCallback(async (limit = 20) => {
+    try {
+      if (!account?.address) {
+        return [];
+      }
+      
+      setIsLoading(true);
+      
+      const response = await axios.get(`${API_URL}/wallet/${account.address}/transactions`, {
+        params: { limit }
+      });
+      
+      const history = response.data.transactions || [];
+      setTransactionHistory(history);
+      
+      return history;
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }, [account]);
   
   /**
-   * Get transaction by ID
-   * @param {string} id - Transaction ID
-   * @returns {Object|null} - Transaction or null if not found
+   * Simulate a transaction before execution
+   * @param {Object} transaction - Transaction to simulate
+   * @returns {Promise<Object>} Simulation result
    */
-  const getTransactionById = useCallback((id) => {
-    return [...pendingTransactions, ...completedTransactions].find(tx => tx.id === id) || null;
-  }, [pendingTransactions, completedTransactions]);
-
-  // Context value
-  const contextValue = {
+  const simulateTransaction = useCallback(async (transaction) => {
+    try {
+      if (!account?.address) {
+        throw new Error('Wallet not connected');
+      }
+      
+      const response = await axios.post(`${API_URL}/wallet/${account.address}/simulate-transaction`, {
+        transaction
+      });
+      
+      return response.data;
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+      throw err;
+    }
+  }, [account]);
+  
+  /**
+   * Get block explorer URL for a transaction
+   * @param {string} txHash - Transaction hash
+   * @returns {string} Block explorer URL
+   */
+  const getExplorerUrl = useCallback((txHash) => {
+    if (!txHash) return '';
+    
+    const explorerBaseUrl = network === 'testnet' 
+      ? 'https://explorer.aptoslabs.com/txn/' 
+      : 'https://explorer.aptoslabs.com/txn/';
+    
+    return `${explorerBaseUrl}${txHash}`;
+  }, [network]);
+  
+  // Effect to fetch transaction history when wallet is connected
+  useEffect(() => {
+    if (account?.address) {
+      getTransactionHistory()
+        .catch(err => console.error('Failed to load transaction history:', err));
+    }
+  }, [account, getTransactionHistory]);
+  
+  return {
+    // State
+    transactions,
+    transactionHistory,
     pendingTransactions,
-    completedTransactions,
-    recentTransactions,
-    isExecuting,
-    executeSingleTransaction,
-    executeStrategy,
-    addTransaction,
-    clearTransactionHistory,
-    getTransactionById
+    isLoading,
+    error,
+    currentTransaction,
+    
+    // Methods
+    executeOperation,
+    executeOperations,
+    monitorTransaction,
+    getTransactionHistory,
+    simulateTransaction,
+    getExplorerUrl,
+    
+    // Helpers
+    clearError: () => setError(null)
   };
-
-  return (
-    <TransactionContext.Provider value={contextValue}>
-      {children}
-    </TransactionContext.Provider>
-  );
 };
 
-/**
- * Hook to use transaction context
- * @returns {Object} - Transaction context
- */
-export const useTransactionContext = () => {
-  const context = useContext(TransactionContext);
-  if (!context) {
-    throw new Error('useTransactionContext must be used within a TransactionProvider');
-  }
-  return context;
-};
-
-export default TransactionContext;
+export default useTransactions;

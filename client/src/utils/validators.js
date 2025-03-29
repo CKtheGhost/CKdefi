@@ -1,190 +1,210 @@
-// src/utils/validators.js
-// Validation utility functions for CompounDefi
+// validators.js - Client-side validation utilities
 
 /**
- * Validate if a string is a valid Aptos wallet address
+ * Validate wallet address format
  * @param {string} address - Wallet address to validate
- * @returns {boolean} Whether the address is valid
+ * @returns {boolean} Is valid address
  */
-export const isValidAddress = (address) => {
-  if (!address || typeof address !== 'string') return false;
-  
-  // Check address format (hexadecimal with 0x prefix, 64 characters after prefix)
-  const addressRegex = /^0x[a-fA-F0-9]{64}$/;
-  return addressRegex.test(address);
+export const isValidWalletAddress = (address) => {
+  if (!address) return false;
+  // Aptos wallet addresses are 66 characters long (with 0x prefix) and hexadecimal
+  return /^0x[a-fA-F0-9]{64}$/.test(address);
 };
 
 /**
- * Validate if a number is a valid amount
- * @param {string|number} amount - Amount to validate
- * @param {number} min - Minimum allowed value
- * @param {number} max - Maximum allowed value
- * @returns {boolean} Whether the amount is valid
+ * Validate investment amount
+ * @param {number|string} amount - Amount to validate
+ * @param {number} min - Minimum valid amount
+ * @param {number} max - Maximum valid amount
+ * @returns {boolean} Is valid amount
  */
-export const isValidAmount = (amount, min = 0, max = Number.MAX_SAFE_INTEGER) => {
-  const parsedAmount = parseFloat(amount);
-  return !isNaN(parsedAmount) && parsedAmount >= min && parsedAmount <= max;
+export const isValidAmount = (amount, min = 0, max = Infinity) => {
+  // Convert to number if string
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  
+  // Check if it's a valid number greater than zero and within range
+  return !isNaN(num) && num > min && num <= max;
 };
 
 /**
- * Validate recommendations form input
- * @param {Object} formData - Form data to validate
- * @returns {Object} Validation result with any errors
+ * Validate risk profile
+ * @param {string} profile - Risk profile to validate
+ * @returns {boolean} Is valid risk profile
  */
-export const validateRecommendationForm = (formData) => {
-  const errors = {};
-  
-  // Validate amount
-  if (!formData.amount) {
-    errors.amount = 'Investment amount is required';
-  } else if (!isValidAmount(formData.amount, 0.1)) {
-    errors.amount = 'Investment amount must be at least 0.1';
-  }
-  
-  // Validate risk profile
-  if (!formData.riskProfile) {
-    errors.riskProfile = 'Risk profile is required';
-  }
-  
-  // Validate wallet address if provided
-  if (formData.walletAddress && !isValidAddress(formData.walletAddress)) {
-    errors.walletAddress = 'Invalid wallet address format';
-  }
-  
-  // Validate max protocols if provided
-  if (formData.maxProtocols && (!Number.isInteger(parseInt(formData.maxProtocols)) || parseInt(formData.maxProtocols) < 1)) {
-    errors.maxProtocols = 'Maximum protocols must be a positive integer';
-  }
-  
-  return {
-    isValid: Object.keys(errors).length === 0,
-    errors
-  };
+export const isValidRiskProfile = (profile) => {
+  const validProfiles = ['conservative', 'balanced', 'aggressive', 'maxYield'];
+  return profile && validProfiles.includes(profile.toLowerCase());
 };
 
 /**
- * Validate optimizer settings
- * @param {Object} settings - Settings to validate
- * @returns {Object} Validation result with any errors
- */
-export const validateOptimizerSettings = (settings) => {
-  const errors = {};
-  
-  // Validate interval
-  if (settings.interval === undefined || settings.interval === null) {
-    errors.interval = 'Rebalance interval is required';
-  } else if (!Number.isInteger(parseInt(settings.interval)) || parseInt(settings.interval) < 1 || parseInt(settings.interval) > 168) {
-    errors.interval = 'Rebalance interval must be between 1 and 168 hours';
-  }
-  
-  // Validate rebalance threshold
-  if (settings.rebalanceThreshold === undefined || settings.rebalanceThreshold === null) {
-    errors.rebalanceThreshold = 'Rebalance threshold is required';
-  } else if (!isValidAmount(settings.rebalanceThreshold, 0.5, 20)) {
-    errors.rebalanceThreshold = 'Rebalance threshold must be between 0.5% and 20%';
-  }
-  
-  // Validate max slippage
-  if (settings.maxSlippage === undefined || settings.maxSlippage === null) {
-    errors.maxSlippage = 'Maximum slippage is required';
-  } else if (!isValidAmount(settings.maxSlippage, 0.1, 5)) {
-    errors.maxSlippage = 'Maximum slippage must be between 0.1% and 5%';
-  }
-  
-  return {
-    isValid: Object.keys(errors).length === 0,
-    errors
-  };
-};
-
-/**
- * Validate if a transaction payload is valid
- * @param {Object} payload - Transaction payload
- * @returns {boolean} Whether the payload is valid
- */
-export const isValidTransactionPayload = (payload) => {
-  if (!payload || typeof payload !== 'object') return false;
-  
-  // Check required fields
-  if (!payload.function || typeof payload.function !== 'string') return false;
-  if (!Array.isArray(payload.type_arguments)) return false;
-  if (!Array.isArray(payload.arguments)) return false;
-  
-  return true;
-};
-
-/**
- * Validate if an email is valid
- * @param {string} email - Email to validate
- * @returns {boolean} Whether the email is valid
+ * Validate email address
+ * @param {string} email - Email address to validate
+ * @returns {boolean} Is valid email
  */
 export const isValidEmail = (email) => {
-  if (!email || typeof email !== 'string') return false;
-  
-  // Use basic regex for email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  if (!email) return false;
+  // Basic email validation regex
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 };
 
 /**
- * Sanitize input to prevent XSS attacks
- * @param {string} input - Input to sanitize
- * @returns {string} Sanitized input
+ * Validate that input is a positive number
+ * @param {number|string} value - Value to validate
+ * @returns {boolean} Is positive number
  */
-export const sanitizeInput = (input) => {
-  if (!input || typeof input !== 'string') return '';
-  
-  return input
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+export const isPositiveNumber = (value) => {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return !isNaN(num) && num > 0;
 };
 
 /**
- * Validate password strength
- * @param {string} password - Password to validate
- * @returns {Object} Validation result with strength score and feedback
+ * Validate percentage (0-100)
+ * @param {number|string} value - Value to validate
+ * @returns {boolean} Is valid percentage
  */
-export const validatePasswordStrength = (password) => {
-  if (!password || typeof password !== 'string') {
-    return { score: 0, feedback: 'Password is required' };
-  }
+export const isValidPercentage = (value) => {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return !isNaN(num) && num >= 0 && num <= 100;
+};
+
+/**
+ * Validate integer
+ * @param {number|string} value - Value to validate
+ * @returns {boolean} Is integer
+ */
+export const isInteger = (value) => {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return !isNaN(num) && Number.isInteger(num);
+};
+
+/**
+ * Validate form fields against schema
+ * @param {Object} values - Form values
+ * @param {Object} schema - Validation schema
+ * @returns {Object} Validation result with errors
+ */
+export const validateForm = (values, schema) => {
+  const errors = {};
   
-  let score = 0;
-  const feedback = [];
-  
-  // Length check
-  if (password.length < 8) {
-    feedback.push('Password should be at least 8 characters long');
-  } else {
-    score += 1;
-  }
-  
-  // Complexity checks
-  if (/[A-Z]/.test(password)) score += 1;
-  if (/[a-z]/.test(password)) score += 1;
-  if (/[0-9]/.test(password)) score += 1;
-  if (/[^A-Za-z0-9]/.test(password)) score += 1;
-  
-  if (score < 3) {
-    feedback.push('Password should include uppercase, lowercase, numbers, and special characters');
-  }
+  Object.keys(schema).forEach(field => {
+    const rules = schema[field];
+    const value = values[field];
+    
+    // Check required fields
+    if (rules.required && (value === undefined || value === null || value === '')) {
+      errors[field] = rules.message || `${field} is required`;
+      return;
+    }
+    
+    // Skip validation if field is not required and empty
+    if ((value === undefined || value === null || value === '') && !rules.required) {
+      return;
+    }
+    
+    // Check field type
+    if (rules.type === 'email' && !isValidEmail(value)) {
+      errors[field] = rules.message || 'Invalid email format';
+    } else if (rules.type === 'walletAddress' && !isValidWalletAddress(value)) {
+      errors[field] = rules.message || 'Invalid wallet address format';
+    } else if (rules.type === 'number' && isNaN(parseFloat(value))) {
+      errors[field] = rules.message || 'Must be a number';
+    } else if (rules.type === 'integer' && !isInteger(value)) {
+      errors[field] = rules.message || 'Must be an integer';
+    }
+    
+    // Check min/max for numbers
+    if (rules.type === 'number' && !isNaN(parseFloat(value))) {
+      const num = parseFloat(value);
+      if (rules.min !== undefined && num < rules.min) {
+        errors[field] = rules.message || `Must be at least ${rules.min}`;
+      }
+      if (rules.max !== undefined && num > rules.max) {
+        errors[field] = rules.message || `Must be at most ${rules.max}`;
+      }
+    }
+    
+    // Check string length
+    if (typeof value === 'string') {
+      if (rules.minLength && value.length < rules.minLength) {
+        errors[field] = rules.message || `Must be at least ${rules.minLength} characters`;
+      }
+      if (rules.maxLength && value.length > rules.maxLength) {
+        errors[field] = rules.message || `Must be at most ${rules.maxLength} characters`;
+      }
+    }
+    
+    // Check pattern
+    if (rules.pattern && !rules.pattern.test(value)) {
+      errors[field] = rules.message || 'Invalid format';
+    }
+    
+    // Custom validation
+    if (rules.validate && typeof rules.validate === 'function') {
+      const customError = rules.validate(value, values);
+      if (customError) {
+        errors[field] = customError;
+      }
+    }
+  });
   
   return {
-    score,
-    feedback: feedback.join('. '),
-    isStrong: score >= 3 && password.length >= 8
+    isValid: Object.keys(errors).length === 0,
+    errors
   };
 };
 
-export default {
-  isValidAddress,
-  isValidAmount,
-  validateRecommendationForm,
-  validateOptimizerSettings,
-  isValidTransactionPayload,
-  isValidEmail,
-  sanitizeInput,
-  validatePasswordStrength
+// Common validation schemas
+export const validationSchemas = {
+  // AI recommendation request schema
+  recommendationForm: {
+    amount: { 
+      required: true, 
+      type: 'number', 
+      min: 0.01,
+      message: 'Please enter a valid investment amount (minimum 0.01)'
+    },
+    riskProfile: { 
+      required: true, 
+      validate: isValidRiskProfile,
+      message: 'Please select a valid risk profile'
+    }
+  },
+  
+  // Auto-rebalance settings schema
+  rebalanceSettings: {
+    threshold: {
+      required: true,
+      type: 'number',
+      min: 1,
+      max: 20,
+      message: 'Threshold must be between 1% and 20%'
+    },
+    interval: {
+      required: true,
+      type: 'number',
+      min: 1,
+      message: 'Interval must be at least 1 hour'
+    },
+    slippage: {
+      required: true,
+      type: 'number',
+      min: 0.1,
+      max: 5,
+      message: 'Slippage must be between 0.1% and 5%'
+    }
+  },
+  
+  // User settings schema
+  userSettings: {
+    riskProfile: {
+      required: true,
+      validate: isValidRiskProfile,
+      message: 'Please select a valid risk profile'
+    },
+    email: {
+      required: false,
+      type: 'email',
+      message: 'Please enter a valid email address'
+    }
+  }
 };

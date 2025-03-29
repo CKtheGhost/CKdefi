@@ -1,145 +1,167 @@
-import React, { useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
-import Card from '../common/Card';
+import React, { useState, useEffect, useContext } from 'react';
+import { WalletContext } from '../../context/WalletContext';
+import { DataContext } from '../../context/DataContext';
+import { formatDate, formatCurrency } from '../../utils/formatters';
+import Spinner from '../common/Spinner';
+import Button from '../common/Button';
 
-const RecommendationHistory = ({ recommendations = [], onSelect }) => {
-  const [expandedItem, setExpandedItem] = useState(null);
-
-  if (!recommendations || recommendations.length === 0) {
-    return (
-      <Card className="bg-gray-800 border border-gray-700">
-        <div className="p-6 text-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          <h3 className="text-lg font-medium text-gray-300 mb-2">No recommendation history</h3>
-          <p className="text-gray-400 text-sm mb-4">
-            Generate your first AI-powered investment strategy to see it here.
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'Recently';
+const RecommendationHistory = ({ onSelect }) => {
+  const { wallet } = useContext(WalletContext);
+  const { fetchRecommendationHistory } = useContext(DataContext);
+  
+  const [history, setHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!wallet.connected || !wallet.address) return;
+      
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const historyData = await fetchRecommendationHistory(wallet.address);
+        setHistory(historyData);
+      } catch (err) {
+        console.error('Failed to load recommendation history:', err);
+        setError('Failed to load recommendation history. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
     
-    try {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-    } catch (error) {
-      console.error('Date formatting error:', error);
-      return 'Recently';
-    }
-  };
-
-  const handleExpand = (index) => {
-    setExpandedItem(expandedItem === index ? null : index);
-  };
-
-  const handleSelect = (recommendation) => {
+    loadHistory();
+  }, [wallet.connected, wallet.address, fetchRecommendationHistory]);
+  
+  const handleSelectRecommendation = (recommendation) => {
     if (onSelect) {
       onSelect(recommendation);
     }
   };
-
-  return (
-    <Card className="bg-gray-800 border border-gray-700">
-      <div className="p-4">
-        <h2 className="text-xl font-bold text-white mb-4">Recommendation History</h2>
-        
-        <div className="space-y-3">
-          {recommendations.map((recommendation, index) => (
-            <div 
-              key={index} 
-              className="p-3 bg-gray-700 rounded-lg transition-all hover:bg-gray-650"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-medium text-white">
-                    {recommendation.title || (recommendation.riskProfile ? 
-                      `${recommendation.riskProfile.charAt(0).toUpperCase() + recommendation.riskProfile.slice(1)} Strategy` : 
-                      'Investment Strategy')}
-                  </h3>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {formatTimestamp(recommendation.timestamp)}
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <span className="text-blue-400 font-semibold">{recommendation.totalApr || 0}% APR</span>
-                  <button 
-                    className="text-gray-400 hover:text-white"
-                    onClick={() => handleExpand(index)}
-                    aria-label={expandedItem === index ? "Collapse" : "Expand"}
-                  >
-                    {expandedItem === index ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-              
-              {expandedItem === index && (
-                <div className="mt-3 pt-3 border-t border-gray-600">
-                  {recommendation.summary && (
-                    <div className="text-sm text-gray-300 mb-2">
-                      {recommendation.summary}
-                    </div>
-                  )}
-                  
-                  {recommendation.allocation && recommendation.allocation.length > 0 && (
-                    <div className="mb-3">
-                      <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">Allocation</h4>
-                      <div className="space-y-1">
-                        {recommendation.allocation.map((item, i) => (
-                          <div key={i} className="flex justify-between text-xs">
-                            <span className="text-gray-300">{item.protocol} ({item.product || 'Staking'})</span>
-                            <span className="text-gray-300">{item.percentage}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {recommendation.executionResult && (
-                    <div className="mb-3">
-                      <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">Execution Result</h4>
-                      <div className={`text-xs ${recommendation.executionResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                        {recommendation.executionResult.success ? 
-                          `Successfully executed (${recommendation.executionResult.operationsCount || 0} operations)` : 
-                          `Execution failed: ${recommendation.executionResult.error || 'Unknown error'}`
-                        }
-                      </div>
-                    </div>
-                  )}
-                  
-                  {recommendation.amount && (
-                    <div className="text-xs text-gray-400 my-2">
-                      Investment amount: {recommendation.amount} APT
-                    </div>
-                  )}
-                  
-                  <div className="flex justify-end mt-3">
-                    <button
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md"
-                      onClick={() => handleSelect(recommendation)}
-                    >
-                      Use This Strategy
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+  
+  // Get status badge color based on status
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'executed':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300';
+      case 'failed':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300';
+    }
+  };
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spinner size="medium" />
       </div>
-    </Card>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 p-4 rounded-md mb-4">
+        <p className="text-sm">{error}</p>
+        <Button 
+          variant="outline" 
+          className="mt-2" 
+          onClick={() => fetchRecommendationHistory(wallet.address)}
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+  
+  if (!wallet.connected) {
+    return (
+      <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 p-4 rounded-md">
+        <p>Please connect your wallet to view recommendation history.</p>
+      </div>
+    );
+  }
+  
+  if (history.length === 0) {
+    return (
+      <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg shadow-sm text-center">
+        <p className="text-gray-600 dark:text-gray-300">No recommendation history found. Generate a recommendation to get started.</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+      <h2 className="text-xl font-bold mb-4">Recommendation History</h2>
+      
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Date
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Strategy
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Risk Profile
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Amount
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                APR
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            {history.map((item, index) => (
+              <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  {formatDate(item.timestamp)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-xs">{item.summary}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 capitalize">
+                  {item.riskProfile}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  {formatCurrency(item.totalInvestment, 'APT')}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400">
+                  {item.totalApr}%
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(item.executionStatus)}`}>
+                    {item.executionStatus || 'generated'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button
+                    onClick={() => handleSelectRecommendation(item)}
+                    className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    View
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 

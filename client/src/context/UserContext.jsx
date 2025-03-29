@@ -1,195 +1,228 @@
-// Nexus-level UserContext.jsx
-// Original user preference logic with robust logging, error handling,
-// plus an easy approach to login/logout and preference management.
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import api from '../services/api';
+import { useWallet } from '../hooks/useWallet';
 
-import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
-
-export const USER_PREFERENCES = {
-  RISK_PROFILE: 'riskProfile',
-  AUTO_REBALANCE: 'autoRebalance',
-  REBALANCE_THRESHOLD: 'rebalanceThreshold',
-  NOTIFICATION_PREFERENCES: 'notificationPreferences',
-  DASHBOARD_LAYOUT: 'dashboardLayout',
-  DATA_VIEW: 'dataView',
-};
-
-const DEFAULT_PREFERENCES = {
-  [USER_PREFERENCES.RISK_PROFILE]: 'balanced',
-  [USER_PREFERENCES.AUTO_REBALANCE]: false,
-  [USER_PREFERENCES.REBALANCE_THRESHOLD]: 5,
-  [USER_PREFERENCES.NOTIFICATION_PREFERENCES]: {
-    transactions: true,
-    priceAlerts: true,
-    newsletterUpdates: false,
-    securityAlerts: true,
-  },
-  [USER_PREFERENCES.DASHBOARD_LAYOUT]: 'default',
-  [USER_PREFERENCES.DATA_VIEW]: 'chart',
-};
-
-export const UserContext = createContext(null);
+// Create the context
+export const UserContext = createContext();
 
 export const UserProvider = ({ children }) => {
-  const [userProfile, setUserProfile] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
-  const [transactionHistory, setTransactionHistory] = useState([]);
-  const [strategyHistory, setStrategyHistory] = useState([]);
+  const { wallet, connected, signMessage } = useWallet();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [preferences, setPreferences] = useState({
+    riskProfile: 'balanced',
+    theme: 'system',
+    autoRebalance: false,
+    rebalancingThreshold: 5,
+    preserveStakedPositions: true,
+    dashboard: {
+      favoriteProtocols: [],
+      defaultSection: 'market-overview'
+    },
+    notifications: {
+      email: true,
+      push: true,
+      rebalance: true,
+      priceAlert: true
+    },
+    aiSettings: {
+      preferredModel: 'auto',
+      autoRecommend: true
+    }
+  });
 
-  // On mount, load data from localStorage
+  // Load user data from local storage on initial render
   useEffect(() => {
-    try {
-      const storedPrefs = localStorage.getItem('userPreferences');
-      if (storedPrefs) {
-        const parsed = JSON.parse(storedPrefs);
-        setPreferences((prev) => ({ ...prev, ...parsed }));
+    const storedUser = localStorage.getItem('compoundefi_user');
+    const storedPreferences = localStorage.getItem('compoundefi_preferences');
+    
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error('Failed to parse stored user data', e);
+        localStorage.removeItem('compoundefi_user');
       }
-    } catch (err) {
-      console.error('[UserContext] Error parsing user preferences:', err);
     }
-
-    try {
-      const storedTxs = localStorage.getItem('transactionHistory');
-      if (storedTxs) {
-        setTransactionHistory(JSON.parse(storedTxs));
+    
+    if (storedPreferences) {
+      try {
+        setPreferences(JSON.parse(storedPreferences));
+      } catch (e) {
+        console.error('Failed to parse stored preferences', e);
+        localStorage.removeItem('compoundefi_preferences');
       }
-    } catch (err) {
-      console.error('[UserContext] Error parsing transaction history:', err);
     }
-
-    try {
-      const storedStrategies = localStorage.getItem('strategyHistory');
-      if (storedStrategies) {
-        setStrategyHistory(JSON.parse(storedStrategies));
-      }
-    } catch (err) {
-      console.error('[UserContext] Error parsing strategy history:', err);
-    }
-
-    try {
-      const storedProfile = localStorage.getItem('userProfile');
-      if (storedProfile) {
-        const parsedProf = JSON.parse(storedProfile);
-        setUserProfile(parsedProf);
-        setIsLoggedIn(true);
-      }
-    } catch (err) {
-      console.error('[UserContext] Error parsing user profile:', err);
-    }
+    
+    setLoading(false);
   }, []);
 
-  // Persist preferences
+  // Auto-connect if wallet is available and user was previously authenticated
   useEffect(() => {
-    localStorage.setItem('userPreferences', JSON.stringify(preferences));
+    if (connected && wallet?.address && localStorage.getItem('compoundefi_token')) {
+      getUserProfile(wallet.address);
+    }
+  }, [connected, wallet?.address]);
+
+  // Register/authenticate user with wallet
+  const registerUser = useCallback(async () => {
+    if (!connected || !wallet?.address) {
+      setError('Wallet not connected');
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      // Generate a unique message to sign
+      const message = `Sign this message to verify your wallet ownership: ${Date.now()}`;
+      
+      // Request signature from wallet
+      const signature = await signMessage(message);
+      
+      if (!signature) {
+        throw new Error('Failed to sign message with wallet');
+      }
+      
+      // Register with backend
+      const response = await api.post('/auth/wallet-verify', {
+        walletAddress: wallet.address,
+        signature,
+        message
+      });
+      
+      if (response.data.success) {
+        const { token, user: userData } = response.data;
+        
+        // Store token and user data
+        localStorage.setItem('compoundefi_token', token);
+        localStorage.setItem('compoundefi_user', JSON.stringify(userData));
+        
+        // Update state
+        setUser(userData);
+        
+        // Load user preferences
+        if (userData.preferences) {
+          setPreferences({
+            ...preferences,
+            ...userData.preferences
+          });
+          localStorage.setItem('compoundefi_preferences', JSON.stringify({
+            ...preferences,
+            ...userData.preferences
+          }));
+        }
+        
+        return true;
+      } else {
+        throw new Error(response.data.error || 'Authentication failed');
+      }
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError(err.message || 'Failed to register with wallet');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [connected, wallet, signMessage, preferences]);
+
+  // Get user profile data
+  const getUserProfile = useCallback(async (address) => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/user/profile`);
+      
+      if (response.data.success) {
+        const { user: userData } = response.data;
+        
+        // Update state and storage
+        setUser(userData);
+        localStorage.setItem('compoundefi_user', JSON.stringify(userData));
+        
+        // Update preferences if available
+        if (userData.preferences) {
+          setPreferences({
+            ...preferences,
+            ...userData.preferences
+          });
+          localStorage.setItem('compoundefi_preferences', JSON.stringify({
+            ...preferences,
+            ...userData.preferences
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+      setError('Failed to load user profile');
+    } finally {
+      setLoading(false);
+    }
   }, [preferences]);
 
-  // Persist transaction history
-  useEffect(() => {
-    localStorage.setItem('transactionHistory', JSON.stringify(transactionHistory));
-  }, [transactionHistory]);
-
-  // Persist strategy history
-  useEffect(() => {
-    localStorage.setItem('strategyHistory', JSON.stringify(strategyHistory));
-  }, [strategyHistory]);
-
-  // Update a single preference
-  const updatePreference = useCallback((key, value) => {
-    if (Object.values(USER_PREFERENCES).includes(key)) {
-      setPreferences((prev) => ({ ...prev, [key]: value }));
-    } else {
-      console.warn(`[UserContext] Attempted to update unknown preference key: ${key}`);
-    }
-  }, []);
-
-  // Reset all preferences to defaults
-  const resetPreferences = useCallback(() => {
-    setPreferences(DEFAULT_PREFERENCES);
-  }, []);
-
-  // Add a new transaction
-  const addTransaction = useCallback((tx) => {
-    const withTime = { ...tx, timestamp: tx.timestamp || Date.now() };
-    setTransactionHistory((prev) => [withTime, ...prev].slice(0, 100));
-  }, []);
-
-  // Clear all transaction history
-  const clearTransactionHistory = useCallback(() => {
-    setTransactionHistory([]);
-  }, []);
-
-  // Add a new strategy
-  const addStrategy = useCallback((strategy) => {
-    const withTime = { ...strategy, timestamp: strategy.timestamp || Date.now() };
-    setStrategyHistory((prev) => [withTime, ...prev].slice(0, 50));
-  }, []);
-
-  // Clear all strategy history
-  const clearStrategyHistory = useCallback(() => {
-    setStrategyHistory([]);
-  }, []);
-
-  // Mock login
-  const login = useCallback(async (creds) => {
+  // Update user preferences
+  const updatePreferences = useCallback(async (newPreferences) => {
     try {
-      // In a real setup: call backend
-      const mockProfile = {
-        id: 'user-123',
-        email: creds.email,
-        name: 'Demo User',
-        createdAt: new Date().toISOString(),
+      setLoading(true);
+      
+      // Merge with existing preferences
+      const updatedPreferences = {
+        ...preferences,
+        ...newPreferences
       };
-      setUserProfile(mockProfile);
-      setIsLoggedIn(true);
-      localStorage.setItem('userProfile', JSON.stringify(mockProfile));
-      return { success: true };
+      
+      // Update on server if authenticated
+      if (user) {
+        await api.post('/user/preferences', { preferences: updatedPreferences });
+      }
+      
+      // Update local state and storage
+      setPreferences(updatedPreferences);
+      localStorage.setItem('compoundefi_preferences', JSON.stringify(updatedPreferences));
+      
+      return true;
     } catch (err) {
-      console.error('[UserContext] Login error:', err);
-      return { success: false, error: err.message || 'Login failed' };
+      console.error('Error updating preferences:', err);
+      setError('Failed to update preferences');
+      return false;
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [preferences, user]);
 
   // Logout user
   const logout = useCallback(() => {
-    setUserProfile(null);
-    setIsLoggedIn(false);
-    localStorage.removeItem('userProfile');
+    // Remove token and user data from storage
+    localStorage.removeItem('compoundefi_token');
+    localStorage.removeItem('compoundefi_user');
+    
+    // Reset state
+    setUser(null);
+    
+    // Keep preferences
+    return true;
   }, []);
 
+  // Check if user is authenticated
+  const isAuthenticated = !!user;
+
+  // Context value
   const value = {
-    userProfile,
-    isLoggedIn,
-    login,
-    logout,
-
+    user,
+    loading,
+    error,
     preferences,
-    updatePreference,
-    resetPreferences,
-
-    transactionHistory,
-    addTransaction,
-    clearTransactionHistory,
-
-    strategyHistory,
-    addStrategy,
-    clearStrategyHistory,
-
-    getRiskProfile: () => preferences[USER_PREFERENCES.RISK_PROFILE],
-    isAutoRebalanceEnabled: () => preferences[USER_PREFERENCES.AUTO_REBALANCE],
-    getRebalanceThreshold: () => preferences[USER_PREFERENCES.REBALANCE_THRESHOLD],
-    getNotificationSettings: () => preferences[USER_PREFERENCES.NOTIFICATION_PREFERENCES],
-    getDashboardLayout: () => preferences[USER_PREFERENCES.DASHBOARD_LAYOUT],
-    getDataViewPreference: () => preferences[USER_PREFERENCES.DATA_VIEW],
+    isAuthenticated,
+    registerUser,
+    getUserProfile,
+    updatePreferences,
+    logout
   };
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={value}>
+      {children}
+    </UserContext.Provider>
+  );
 };
 
-// Custom hook
-export const useUser = () => {
-  const ctx = useContext(UserContext);
-  if (!ctx) {
-    throw new Error('[useUser] must be used within a UserProvider');
-  }
-  return ctx;
-};
+export default UserContext;

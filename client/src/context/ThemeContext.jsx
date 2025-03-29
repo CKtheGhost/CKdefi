@@ -1,95 +1,106 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 
-// Define available themes
-export const THEMES = {
+// Define theme types
+const THEMES = {
   LIGHT: 'light',
   DARK: 'dark',
   SYSTEM: 'system'
 };
 
-// Create the context
-export const ThemeContext = createContext(null);
+// Create the theme context
+const ThemeContext = createContext();
 
-export const ThemeProvider = ({ children }) => {
-  // State to track the selected theme preference
-  const [themePreference, setThemePreference] = useState(THEMES.SYSTEM);
-  
-  // State to track the actual theme that's applied (light or dark)
-  const [activeTheme, setActiveTheme] = useState(THEMES.LIGHT);
+// Theme provider component
+export function ThemeProvider({ children }) {
+  // Get initial theme from localStorage or default to system preference
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem('compoundefi-theme');
+    return savedTheme || THEMES.SYSTEM;
+  });
 
-  // Update active theme based on preference and system setting
+  // Track system preference
+  const [systemTheme, setSystemTheme] = useState(
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? THEMES.DARK : THEMES.LIGHT
+  );
+
+  // Calculate the actual theme to apply
+  const activeTheme = useMemo(() => {
+    return theme === THEMES.SYSTEM ? systemTheme : theme;
+  }, [theme, systemTheme]);
+
+  // Listen for system theme changes
   useEffect(() => {
-    // Load theme preference from localStorage
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme && Object.values(THEMES).includes(savedTheme)) {
-      setThemePreference(savedTheme);
-    }
-    
-    // Function to set the active theme
-    const updateActiveTheme = () => {
-      if (themePreference === THEMES.SYSTEM) {
-        // Use system preference
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setActiveTheme(prefersDark ? THEMES.DARK : THEMES.LIGHT);
-      } else {
-        // Use explicitly selected theme
-        setActiveTheme(themePreference);
-      }
-    };
-    
-    // Initial update
-    updateActiveTheme();
-    
-    // Listen for system theme changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      if (themePreference === THEMES.SYSTEM) {
-        updateActiveTheme();
-      }
+    
+    const handleChange = (e) => {
+      setSystemTheme(e.matches ? THEMES.DARK : THEMES.LIGHT);
     };
     
-    // Add listener for modern browsers
+    // Add event listener (with backward compatibility)
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handleChange);
     } else {
-      // Fallback for older browsers
+      // For older browsers
       mediaQuery.addListener(handleChange);
     }
     
-    // Apply theme to document
-    document.documentElement.setAttribute('data-theme', activeTheme);
-    
-    if (activeTheme === THEMES.DARK) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    
-    // Cleanup function
+    // Cleanup
     return () => {
       if (mediaQuery.removeEventListener) {
         mediaQuery.removeEventListener('change', handleChange);
       } else {
+        // For older browsers
         mediaQuery.removeListener(handleChange);
       }
     };
-  }, [themePreference, activeTheme]);
+  }, []);
 
-  // Function to update theme preference
-  const setTheme = (theme) => {
-    if (Object.values(THEMES).includes(theme)) {
-      setThemePreference(theme);
-      localStorage.setItem('theme', theme);
+  // Apply theme to HTML element
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+    
+    // Remove both theme classes
+    htmlElement.classList.remove('light', 'dark');
+    
+    // Add the active theme class
+    htmlElement.classList.add(activeTheme);
+    
+    // Store user preference
+    if (theme !== THEMES.SYSTEM) {
+      localStorage.setItem('compoundefi-theme', theme);
+    }
+  }, [activeTheme, theme]);
+
+  // Change theme function
+  const changeTheme = (newTheme) => {
+    if (Object.values(THEMES).includes(newTheme)) {
+      setTheme(newTheme);
+      localStorage.setItem('compoundefi-theme', newTheme);
+    } else {
+      console.error(`Invalid theme: ${newTheme}. Must be one of: ${Object.values(THEMES).join(', ')}`);
     }
   };
 
-  // Context value
+  // Toggle between light and dark themes
+  const toggleTheme = () => {
+    if (activeTheme === THEMES.LIGHT) {
+      changeTheme(THEMES.DARK);
+    } else {
+      changeTheme(THEMES.LIGHT);
+    }
+  };
+
+  // Theme context value
   const value = {
-    themePreference,
+    theme,
     activeTheme,
-    setTheme,
+    isDarkMode: activeTheme === THEMES.DARK,
     isLightMode: activeTheme === THEMES.LIGHT,
-    isDarkMode: activeTheme === THEMES.DARK
+    isSystemTheme: theme === THEMES.SYSTEM,
+    systemPreference: systemTheme,
+    changeTheme,
+    toggleTheme,
+    THEMES
   };
 
   return (
@@ -97,13 +108,55 @@ export const ThemeProvider = ({ children }) => {
       {children}
     </ThemeContext.Provider>
   );
-};
+}
 
 // Custom hook to use the theme context
-export const useTheme = () => {
-  const context = React.useContext(ThemeContext);
-  if (context === null) {
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
   return context;
+}
+
+// Helper function to create theme-specific styles or classes
+export function createThemedStyles(lightStyles, darkStyles) {
+  const { activeTheme } = useTheme();
+  return activeTheme === THEMES.DARK ? darkStyles : lightStyles;
+}
+
+// Theming constants for consistent styling
+export const THEME_COLORS = {
+  [THEMES.LIGHT]: {
+    primary: '#3b82f6', // Blue
+    secondary: '#10b981', // Green
+    accent: '#8b5cf6', // Purple
+    warning: '#f59e0b', // Amber
+    danger: '#ef4444', // Red
+    background: '#ffffff',
+    card: '#f9fafb',
+    text: {
+      primary: '#1f2937',
+      secondary: '#6b7280',
+      muted: '#9ca3af'
+    },
+    border: '#e5e7eb',
+    divider: '#f3f4f6'
+  },
+  [THEMES.DARK]: {
+    primary: '#3b82f6', // Blue
+    secondary: '#10b981', // Green
+    accent: '#8b5cf6', // Purple
+    warning: '#f59e0b', // Amber
+    danger: '#ef4444', // Red
+    background: '#111827',
+    card: '#1f2937',
+    text: {
+      primary: '#f9fafb',
+      secondary: '#e5e7eb',
+      muted: '#9ca3af'
+    },
+    border: '#374151',
+    divider: '#1f2937'
+  }
 };

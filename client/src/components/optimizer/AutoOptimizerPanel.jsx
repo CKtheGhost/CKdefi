@@ -1,440 +1,220 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, BarChart3, Settings, Activity, RefreshCw, AlertCircle } from 'lucide-react';
-import { useWalletContext } from '../context/WalletContext';
-import { useNotification } from '../context/NotificationContext';
-import api from '../services/api';
+import { useWallet } from '../../hooks/useWallet';
+import { usePortfolio } from '../../hooks/usePortfolio';
+import { useNotification } from '../../hooks/useNotification';
+import OptimizerStatus from './OptimizerStatus';
+import OptimizerSettings from './OptimizerSettings';
+import PortfolioBalance from './PortfolioBalance';
+import ExecutionHistory from './ExecutionHistory';
 
 const AutoOptimizerPanel = () => {
-  const { walletAddress, isConnected } = useWalletContext();
+  const { walletAddress, connected } = useWallet();
+  const { portfolio, loading: portfolioLoading } = usePortfolio();
   const { showNotification } = useNotification();
   
-  const [isEnabled, setIsEnabled] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [settings, setSettings] = useState({
-    minRebalanceThreshold: 5,
-    maxSlippage: 2.0,
-    cooldownPeriod: 24,
-    preserveStakedPositions: true,
-    maxOperationsPerRebalance: 6
+  const [optimizerStatus, setOptimizerStatus] = useState({
+    enabled: false,
+    lastRebalanced: null,
+    nextScheduled: null,
+    monitoring: false
   });
-  const [status, setStatus] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [showSettings, setShowSettings] = useState(false);
   
-  // Load initial state
+  const [settings, setSettings] = useState({
+    minRebalanceThreshold: 5, // 5% drift
+    maxSlippage: 2.0, // 2% max slippage
+    preserveStakedPositions: true,
+    cooldownPeriod: 24 * 60 * 60 * 1000, // 24 hours
+    autoExecute: true
+  });
+  
+  const [rebalanceHistory, setRebalanceHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Fetch optimizer status when wallet is connected
   useEffect(() => {
-    if (isConnected && walletAddress) {
-      loadStatus();
-      loadHistory();
+    if (connected && walletAddress) {
+      fetchOptimizerStatus();
+      fetchRebalanceHistory();
     }
-  }, [isConnected, walletAddress]);
+  }, [connected, walletAddress]);
   
-  const loadStatus = async () => {
+  // Fetch optimizer status from API
+  const fetchOptimizerStatus = async () => {
     try {
-      setIsLoading(true);
-      const response = await api.get(`/api/auto-rebalance/status?walletAddress=${walletAddress}`);
-      setIsEnabled(response.data.enabled);
-      setStatus(response.data);
+      setLoading(true);
+      const response = await fetch(`/api/auto-rebalance/status?walletAddress=${walletAddress}`);
+      const data = await response.json();
       
-      // Also get settings
-      const settingsResponse = await api.get(`/api/auto-rebalance/settings?walletAddress=${walletAddress}`);
-      if (settingsResponse.data.settings) {
-        setSettings(settingsResponse.data.settings);
+      if (response.ok) {
+        setOptimizerStatus({
+          enabled: data.monitoring || false,
+          lastRebalanced: data.lastRebalanced || null,
+          nextScheduled: data.nextCheck || null,
+          monitoring: data.monitoring || false
+        });
+        
+        // Also update settings if provided
+        if (data.settings) {
+          setSettings(prevSettings => ({
+            ...prevSettings,
+            ...data.settings
+          }));
+        }
       }
     } catch (error) {
-      console.error('Failed to load auto-optimizer status:', error);
-      showNotification('Failed to load auto-optimizer status', 'error');
+      console.error('Error fetching optimizer status:', error);
+      showNotification('Failed to fetch optimizer status', 'error');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
   
-  const loadHistory = async () => {
+  // Fetch rebalance history from API
+  const fetchRebalanceHistory = async () => {
     try {
-      const response = await api.get(`/api/auto-rebalance/history?walletAddress=${walletAddress}`);
-      setHistory(response.data);
+      const response = await fetch(`/api/auto-rebalance/history?walletAddress=${walletAddress}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setRebalanceHistory(data.history || []);
+      }
     } catch (error) {
-      console.error('Failed to load rebalance history:', error);
+      console.error('Error fetching rebalance history:', error);
     }
   };
   
-  const toggleAutoOptimize = async () => {
+  // Update optimizer settings
+  const updateSettings = async (newSettings) => {
     try {
-      setIsLoading(true);
-      const response = await api.post('/api/auto-rebalance/settings', {
-        walletAddress,
-        enabled: !isEnabled
+      setLoading(true);
+      const response = await fetch('/api/auto-rebalance/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          walletAddress,
+          ...newSettings
+        })
       });
       
-      setIsEnabled(response.data.enabled);
-      showNotification(
-        response.data.enabled 
-          ? 'Auto-optimization enabled successfully' 
-          : 'Auto-optimization disabled',
-        response.data.enabled ? 'success' : 'info'
-      );
+      const data = await response.json();
       
-      loadStatus();
-    } catch (error) {
-      console.error('Failed to toggle auto-optimization:', error);
-      showNotification('Failed to toggle auto-optimization', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const runManualRebalance = async () => {
-    try {
-      setIsLoading(true);
-      showNotification('Executing portfolio rebalance...', 'info');
-      
-      const response = await api.post('/api/auto-rebalance/execute', {
-        walletAddress,
-        force: true
-      });
-      
-      if (response.data.success) {
-        showNotification('Portfolio rebalanced successfully!', 'success');
-        loadHistory();
-        loadStatus();
+      if (response.ok) {
+        setSettings(prevSettings => ({
+          ...prevSettings,
+          ...newSettings
+        }));
+        showNotification('Settings updated successfully', 'success');
+        
+        // Refresh status if enabled/disabled
+        if (newSettings.enabled !== undefined) {
+          fetchOptimizerStatus();
+        }
       } else {
-        showNotification(response.data.message || 'Rebalance failed', 'error');
+        showNotification(data.error || 'Failed to update settings', 'error');
       }
     } catch (error) {
-      console.error('Manual rebalance failed:', error);
-      showNotification('Rebalance failed: ' + (error.response?.data?.message || error.message), 'error');
+      console.error('Error updating settings:', error);
+      showNotification('Failed to update settings', 'error');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
   
-  const saveSettings = async () => {
+  // Execute rebalance immediately
+  const executeRebalance = async (force = false) => {
     try {
-      setIsLoading(true);
-      const response = await api.post('/api/auto-rebalance/settings', {
-        walletAddress,
-        settings
+      setLoading(true);
+      const response = await fetch('/api/auto-rebalance/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          walletAddress,
+          force
+        })
       });
       
-      setSettings(response.data.settings);
-      setShowSettings(false);
-      showNotification('Auto-optimizer settings saved', 'success');
+      const data = await response.json();
+      
+      if (response.ok) {
+        showNotification('Rebalance initiated successfully', 'success');
+        fetchOptimizerStatus();
+        fetchRebalanceHistory();
+      } else {
+        showNotification(data.error || 'Failed to execute rebalance', 'error');
+      }
     } catch (error) {
-      console.error('Failed to save settings:', error);
-      showNotification('Failed to save settings', 'error');
+      console.error('Error executing rebalance:', error);
+      showNotification('Failed to execute rebalance', 'error');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
   
-  const renderStatus = () => {
-    if (!status) return null;
-    
-    const formatTimeRemaining = (ms) => {
-      if (!ms) return 'N/A';
-      const hours = Math.floor(ms / (60 * 60 * 1000));
-      const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
-      return `${hours}h ${minutes}m`;
-    };
-    
-    return (
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-semibold">Auto-Optimizer Status</h3>
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${isEnabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {isEnabled ? 'Active' : 'Inactive'}
-          </span>
-        </div>
-        
-        {isEnabled && status.nextRun && (
-          <div className="space-y-3">
-            <div className="flex items-center text-sm">
-              <Clock className="w-4 h-4 mr-2 text-blue-500" />
-              <span className="text-gray-600">Next optimization in:</span>
-              <span className="ml-2 font-medium">{formatTimeRemaining(status.timeRemaining)}</span>
-            </div>
-            
-            {status.driftAnalysis && (
-              <div className="flex items-center text-sm">
-                <Activity className="w-4 h-4 mr-2 text-blue-500" />
-                <span className="text-gray-600">Current drift:</span>
-                <span className={`ml-2 font-medium ${status.driftAnalysis.maxDrift >= settings.minRebalanceThreshold ? 'text-yellow-600' : 'text-green-600'}`}>
-                  {status.driftAnalysis.maxDrift.toFixed(2)}%
-                </span>
-              </div>
-            )}
-            
-            {status.driftAnalysis && status.driftAnalysis.maxDrift >= settings.minRebalanceThreshold && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
-                <div className="flex items-start">
-                  <AlertCircle className="w-4 h-4 mt-0.5 mr-2 text-yellow-500" />
-                  <div>
-                    <p className="font-medium">Portfolio drift detected</p>
-                    <p className="text-yellow-700 text-xs mt-1">
-                      Your portfolio has drifted {status.driftAnalysis.maxDrift.toFixed(2)}% from optimal allocation. Scheduled optimization will address this soon.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        
-        <div className="flex space-x-2 mt-4">
-          <button 
-            onClick={toggleAutoOptimize}
-            disabled={isLoading}
-            className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-              isEnabled 
-              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-              : 'bg-green-100 text-green-700 hover:bg-green-200'
-            }`}
-          >
-            {isLoading ? (
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Settings className="w-4 h-4 mr-2" />
-            )}
-            {isEnabled ? 'Disable Auto-Optimize' : 'Enable Auto-Optimize'}
-          </button>
-          
-          <button 
-            onClick={runManualRebalance}
-            disabled={isLoading}
-            className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
-          >
-            {isLoading ? (
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Activity className="w-4 h-4 mr-2" />
-            )}
-            Rebalance Now
-          </button>
-        </div>
-      </div>
-    );
-  };
-  
-  const renderSettings = () => {
-    if (!showSettings) {
-      return (
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Optimizer Settings</h3>
-            <button 
-              onClick={() => setShowSettings(true)}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-            >
-              Edit Settings
-            </button>
-          </div>
-          
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 p-2 rounded">
-              <p className="text-xs text-gray-500">Rebalance Threshold</p>
-              <p className="font-medium">{settings.minRebalanceThreshold}%</p>
-            </div>
-            <div className="bg-gray-50 p-2 rounded">
-              <p className="text-xs text-gray-500">Max Slippage</p>
-              <p className="font-medium">{settings.maxSlippage}%</p>
-            </div>
-            <div className="bg-gray-50 p-2 rounded">
-              <p className="text-xs text-gray-500">Cooldown Period</p>
-              <p className="font-medium">{settings.cooldownPeriod} hours</p>
-            </div>
-            <div className="bg-gray-50 p-2 rounded">
-              <p className="text-xs text-gray-500">Preserve Staked Positions</p>
-              <p className="font-medium">{settings.preserveStakedPositions ? 'Yes' : 'No'}</p>
-            </div>
-          </div>
-        </div>
-      );
+  // Check if portfolio needs rebalancing
+  const checkRebalanceNeeded = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/auto-rebalance/check?walletAddress=${walletAddress}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        return data.needsRebalancing;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking rebalance status:', error);
+      return false;
+    } finally {
+      setLoading(false);
     }
-    
-    return (
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <h3 className="text-lg font-semibold mb-3">Edit Optimizer Settings</h3>
-        
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Rebalance Threshold (%)
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={settings.minRebalanceThreshold}
-              onChange={(e) => setSettings({...settings, minRebalanceThreshold: Number(e.target.value)})}
-              className="w-full p-2 border border-gray-300 rounded-md"
-            />
-            <p className="text-xs text-gray-500 mt-1">Minimum portfolio drift to trigger rebalancing</p>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Maximum Slippage (%)
-            </label>
-            <input
-              type="number"
-              min="0.1"
-              max="5"
-              step="0.1"
-              value={settings.maxSlippage}
-              onChange={(e) => setSettings({...settings, maxSlippage: Number(e.target.value)})}
-              className="w-full p-2 border border-gray-300 rounded-md"
-            />
-            <p className="text-xs text-gray-500 mt-1">Maximum acceptable slippage for transactions</p>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Cooldown Period (hours)
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="168"
-              value={settings.cooldownPeriod}
-              onChange={(e) => setSettings({...settings, cooldownPeriod: Number(e.target.value)})}
-              className="w-full p-2 border border-gray-300 rounded-md"
-            />
-            <p className="text-xs text-gray-500 mt-1">Minimum time between rebalances</p>
-          </div>
-          
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="preserveStakedPositions"
-              checked={settings.preserveStakedPositions}
-              onChange={(e) => setSettings({...settings, preserveStakedPositions: e.target.checked})}
-              className="h-4 w-4 text-blue-600 rounded"
-            />
-            <label htmlFor="preserveStakedPositions" className="ml-2 block text-sm text-gray-700">
-              Preserve staked positions
-            </label>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Max Operations Per Rebalance
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={settings.maxOperationsPerRebalance}
-              onChange={(e) => setSettings({...settings, maxOperationsPerRebalance: Number(e.target.value)})}
-              className="w-full p-2 border border-gray-300 rounded-md"
-            />
-            <p className="text-xs text-gray-500 mt-1">Maximum number of operations in a single rebalance</p>
-          </div>
-          
-          <div className="flex justify-end space-x-2 pt-2">
-            <button 
-              onClick={() => setShowSettings(false)}
-              className="px-3 py-2 text-gray-700 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={saveSettings}
-              disabled={isLoading}
-              className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
-            >
-              {isLoading ? 'Saving...' : 'Save Settings'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
   };
   
-  const renderHistory = () => {
-    if (history.length === 0) {
-      return (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h3 className="text-lg font-semibold mb-3">Rebalance History</h3>
-          <p className="text-sm text-gray-500 text-center py-6">No rebalance history yet</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <h3 className="text-lg font-semibold mb-3">Rebalance History</h3>
-        
-        <div className="space-y-3">
-          {history.map((entry, index) => (
-            <div key={index} className="border-b border-gray-100 pb-3 last:border-none last:pb-0">
-              <div className="flex justify-between items-start mb-1">
-                <div className="flex items-center">
-                  <Calendar className="w-4 h-4 mr-2 text-gray-500" />
-                  <span className="text-sm text-gray-600">
-                    {new Date(entry.timestamp).toLocaleString()}
-                  </span>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  entry.success 
-                    ? 'bg-green-100 text-green-800' 
-                    : entry.type === 'check' 
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-red-100 text-red-800'
-                }`}>
-                  {entry.success ? 'Success' : entry.type === 'check' ? 'Check' : 'Failed'}
-                </span>
-              </div>
-              
-              <p className="text-sm">
-                {entry.message || (entry.type === 'check' 
-                  ? 'Portfolio analysis performed' 
-                  : entry.success 
-                    ? `Rebalanced ${entry.operations || 0} positions successfully` 
-                    : entry.error || 'Rebalance operation failed'
-                )}
-              </p>
-              
-              {entry.driftPercentage !== undefined && (
-                <div className="flex items-center mt-1">
-                  <BarChart3 className="w-3 h-3 mr-1 text-gray-500" />
-                  <span className="text-xs text-gray-500">
-                    Drift: {entry.driftPercentage.toFixed(2)}%
-                  </span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+  // Toggle auto-optimization
+  const toggleAutoOptimization = async (enabled) => {
+    await updateSettings({ enabled });
   };
   
-  if (!isConnected) {
+  if (!connected) {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-6 text-center">
-        <AlertCircle className="w-8 h-8 text-yellow-500 mx-auto mb-3" />
-        <h3 className="text-lg font-semibold mb-2">Wallet Connection Required</h3>
-        <p className="text-gray-600 mb-4">Please connect your wallet to use the Auto-Optimizer</p>
+      <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-6 shadow-md">
+        <h3 className="text-lg font-semibold mb-4">Auto-Optimizer</h3>
+        <p className="text-gray-600 dark:text-gray-300">
+          Please connect your wallet to use the Auto-Optimizer feature.
+        </p>
       </div>
     );
   }
   
   return (
-    <div className="space-y-6">
-      {renderStatus()}
-      {renderSettings()}
-      {renderHistory()}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 space-y-6">
+        <OptimizerStatus 
+          status={optimizerStatus} 
+          loading={loading} 
+          onToggle={toggleAutoOptimization}
+          onExecuteNow={executeRebalance}
+          portfolio={portfolio}
+        />
+        
+        <PortfolioBalance 
+          portfolio={portfolio} 
+          loading={portfolioLoading}
+          checkRebalanceNeeded={checkRebalanceNeeded}
+        />
+        
+        <ExecutionHistory history={rebalanceHistory} loading={loading} />
+      </div>
       
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-        <div className="flex items-start">
-          <AlertCircle className="w-5 h-5 text-blue-500 mt-0.5 mr-3" />
-          <div>
-            <h4 className="font-medium text-blue-800 mb-1">About Auto-Optimizer</h4>
-            <p className="text-sm text-blue-700">
-              The Auto-Optimizer uses AI to monitor your portfolio and rebalance it according to the latest market conditions and yield opportunities. Set your preferences above and let CompounDefi maintain your optimal allocation automatically.
-            </p>
-          </div>
-        </div>
+      <div className="lg:col-span-1">
+        <OptimizerSettings 
+          settings={settings} 
+          updateSettings={updateSettings}
+          loading={loading}
+        />
       </div>
     </div>
   );

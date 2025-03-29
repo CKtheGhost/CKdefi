@@ -1,180 +1,150 @@
-// src/components/optimizer/OptimizerStatus.jsx
 import React from 'react';
-import { formatDistanceToNow } from 'date-fns';
-import Button from '../common/Button';
+import { formatDistanceToNow, format } from 'date-fns';
+import { Switch } from '@headlessui/react';
+import { ClockIcon, RefreshCwIcon, CheckCircleIcon, XCircleIcon } from 'lucide-react';
 
-/**
- * OptimizerStatus component
- * Displays the current status of the auto-optimizer
- */
-const OptimizerStatus = ({ enabled, settings, metrics, strategy, loading, onRunNow, onToggle }) => {
-  // Format time until next run
-  const formatTimeUntil = (timestamp) => {
-    if (!timestamp) return 'Not scheduled';
+const OptimizerStatus = ({ status, loading, onToggle, onExecuteNow, portfolio }) => {
+  const { enabled, lastRebalanced, nextScheduled, monitoring } = status;
+  
+  // Calculate drift if portfolio data is available
+  const calculateDrift = () => {
+    if (!portfolio || !portfolio.totalValueUSD) return null;
     
-    try {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-    } catch (error) {
-      const now = Date.now();
-      const diff = timestamp - now;
-      
-      if (diff <= 0) {
-        return 'Imminent';
-      }
-      
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      
-      return `${hours}h ${minutes}m`;
-    }
+    // This is a simplified calculation
+    // In a real implementation, you would compare current allocation to target allocation
+    // and calculate the maximum percentage difference
+    return {
+      maxDrift: 4.8, // Example value, replace with actual calculation
+      avgDrift: 2.3, // Example value, replace with actual calculation
+      needsRebalancing: 4.8 > 5 ? false : true // Compare with threshold
+    };
   };
   
-  // Calculate the progress percentage until next run
-  const calculateProgress = () => {
-    if (!settings.lastRun || !settings.nextRun) return 0;
-    
-    const totalDuration = settings.nextRun - settings.lastRun;
-    const elapsed = Date.now() - settings.lastRun;
-    const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
-    
-    return progress;
-  };
-  
-  const progress = calculateProgress();
+  const drift = calculateDrift();
   
   return (
-    <div className="bg-gray-750 rounded-lg p-4">
-      {enabled ? (
-        <>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-medium">Auto-Optimizer Active</h3>
-              <p className="text-sm text-gray-400">
-                Automatically optimizing your portfolio for maximum yield
-              </p>
-            </div>
-            <div className="bg-blue-900/30 text-blue-400 px-3 py-1 rounded-full text-sm flex items-center">
-              <span className="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse"></span>
-              {loading ? 'Optimizing...' : 'Active'}
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-400">Next optimization in:</span>
-                <span className="text-white">{formatTimeUntil(settings.nextRun)}</span>
-              </div>
-              <div className="w-full bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-in-out"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-400">Strategy:</span>
-                <span className="text-white ml-2">{strategy?.name || 'Balanced Yield'}</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Expected APR:</span>
-                <span className="text-green-400 ml-2">{strategy?.expectedAPR || '7.5'}%</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Rebalance Threshold:</span>
-                <span className="text-white ml-2">{settings.rebalanceThreshold}%</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Check Interval:</span>
-                <span className="text-white ml-2">{settings.interval} hours</span>
-              </div>
-            </div>
-            
-            <div className="flex justify-between items-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onToggle}
-                disabled={loading}
-              >
-                Disable Auto-Optimizer
-              </Button>
-              
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={onRunNow}
-                disabled={loading}
-              >
-                {loading ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Optimizing...
-                  </span>
-                ) : 'Optimize Now'}
-              </Button>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="text-center py-6">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-          </svg>
-          <h3 className="font-medium mb-2">Auto-Optimizer Disabled</h3>
-          <p className="text-gray-400 mb-4">
-            Enable the auto-optimizer to automatically maintain optimal yield across market conditions.
-          </p>
-          <div className="flex justify-center space-x-3">
-            <Button
-              variant="outline"
-              onClick={onRunNow}
-              disabled={loading}
-            >
-              Run Once
-            </Button>
-            <Button
-              variant="primary"
-              onClick={onToggle}
-              disabled={loading}
-            >
-              Enable Auto-Optimizer
-            </Button>
-          </div>
+    <div className="rounded-lg bg-white dark:bg-gray-800 p-6 shadow-md">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Auto-Optimizer Status</h3>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-600 dark:text-gray-300">
+            {enabled ? 'Enabled' : 'Disabled'}
+          </span>
+          <Switch
+            checked={enabled}
+            onChange={() => onToggle(!enabled)}
+            disabled={loading}
+            className={`${
+              enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+            } relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+          >
+            <span
+              className={`${
+                enabled ? 'translate-x-6' : 'translate-x-1'
+              } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+            />
+          </Switch>
         </div>
-      )}
+      </div>
       
-      {/* Metrics summary */}
-      {metrics && metrics.totalOptimizations > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-700">
-          <h4 className="text-sm font-medium text-gray-300 mb-2">Optimization History</h4>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-gray-400">Total Optimizations:</span>
-              <span className="text-white ml-1">{metrics.totalOptimizations}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">Value Saved:</span>
-              <span className="text-green-400 ml-1">${metrics.totalSaved?.toFixed(2) || '0.00'}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">Avg. APR Increase:</span>
-              <span className="text-green-400 ml-1">{metrics.averageAPRIncrease?.toFixed(2) || '0.00'}%</span>
-            </div>
-            <div>
-              <span className="text-gray-400">Last Run:</span>
-              <span className="text-white ml-1">
-                {settings.lastRun ? formatTimeUntil(settings.lastRun) : 'Never'}
-              </span>
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+          <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 mb-1">
+            <ClockIcon className="h-4 w-4 mr-1" />
+            <span>Last Rebalanced</span>
+          </div>
+          <div className="font-medium">
+            {lastRebalanced ? (
+              <>
+                <div>{format(new Date(lastRebalanced), 'MMM d, yyyy')}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  {formatDistanceToNow(new Date(lastRebalanced), { addSuffix: true })}
+                </div>
+              </>
+            ) : (
+              <span className="text-gray-500 dark:text-gray-400">Never</span>
+            )}
           </div>
         </div>
-      )}
+        
+        <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+          <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 mb-1">
+            <ClockIcon className="h-4 w-4 mr-1" />
+            <span>Next Scheduled Check</span>
+          </div>
+          <div className="font-medium">
+            {monitoring && nextScheduled ? (
+              <>
+                <div>{format(new Date(nextScheduled), 'MMM d, yyyy h:mm a')}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  {formatDistanceToNow(new Date(nextScheduled), { addSuffix: true })}
+                </div>
+              </>
+            ) : (
+              <span className="text-gray-500 dark:text-gray-400">Not scheduled</span>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Current Portfolio Drift</div>
+          {drift && (
+            <div className={`rounded-full px-2 py-1 text-xs font-medium ${
+              drift.needsRebalancing 
+                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' 
+                : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+            }`}>
+              {drift.needsRebalancing ? 'Rebalance Needed' : 'Balanced'}
+            </div>
+          )}
+        </div>
+        
+        {drift ? (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Maximum Drift</div>
+              <div className="text-2xl font-semibold">{drift.maxDrift.toFixed(1)}%</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Average Drift</div>
+              <div className="text-2xl font-semibold">{drift.avgDrift.toFixed(1)}%</div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            Connect your wallet to view portfolio drift metrics
+          </div>
+        )}
+      </div>
+      
+      <div className="flex flex-col sm:flex-row gap-4">
+        <button
+          onClick={() => onExecuteNow(false)}
+          disabled={loading}
+          className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCwIcon className="h-4 w-4 mr-2" />
+          Rebalance Now
+        </button>
+        
+        <button
+          onClick={() => onExecuteNow(true)}
+          disabled={loading}
+          className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCwIcon className="h-4 w-4 mr-2" />
+          Force Rebalance
+        </button>
+        
+        <button
+          disabled={loading}
+          className="flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Check Status
+        </button>
+      </div>
     </div>
   );
 };

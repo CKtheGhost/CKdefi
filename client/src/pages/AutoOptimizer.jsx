@@ -1,5 +1,5 @@
 // src/pages/AutoOptimizer.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWalletContext } from '../context/WalletContext';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import OptimizerStatus from '../components/optimizer/OptimizerStatus';
@@ -29,43 +29,64 @@ const AutoOptimizer = () => {
     preserveStakedPositions: true
   });
   const [isRebalancing, setIsRebalancing] = useState(false);
+  const [statusInfo, setStatusInfo] = useState(null);
+  const [optimizationMetrics, setOptimizationMetrics] = useState(null);
 
   // Load settings from localStorage
   useEffect(() => {
-    const savedSettings = localStorage.getItem('autoOptimizerSettings');
-    if (savedSettings) {
-      try {
-        const parsedSettings = JSON.parse(savedSettings);
-        setSettings(prev => ({ ...prev, ...parsedSettings }));
-      } catch (error) {
-        console.error('Failed to parse saved settings:', error);
+    const loadSettings = () => {
+      const savedSettings = localStorage.getItem('autoOptimizerSettings');
+      if (savedSettings) {
+        try {
+          const parsedSettings = JSON.parse(savedSettings);
+          setSettings(prev => ({ ...prev, ...parsedSettings }));
+        } catch (error) {
+          console.error('Failed to parse saved settings:', error);
+        }
       }
-    }
 
-    // Load state from localStorage
-    const isEnabledSaved = localStorage.getItem('autoOptimizeEnabled') === 'true';
-    setIsEnabled(isEnabledSaved);
+      // Load state from localStorage
+      const isEnabledSaved = localStorage.getItem('autoOptimizeEnabled') === 'true';
+      setIsEnabled(isEnabledSaved);
 
-    const lastRun = localStorage.getItem('lastAutoOptimizeRun');
-    if (lastRun) {
-      setLastRunTime(parseInt(lastRun));
-    }
-
-    const nextRun = localStorage.getItem('nextAutoOptimizeRun');
-    if (nextRun) {
-      setNextRunTime(parseInt(nextRun));
-    }
-
-    // Load history from localStorage
-    const savedHistory = localStorage.getItem('autoOptimizeHistory');
-    if (savedHistory) {
-      try {
-        setHistory(JSON.parse(savedHistory));
-      } catch (error) {
-        console.error('Failed to parse optimization history:', error);
+      const lastRun = localStorage.getItem('lastAutoOptimizeRun');
+      if (lastRun) {
+        setLastRunTime(parseInt(lastRun));
       }
+
+      const nextRun = localStorage.getItem('nextAutoOptimizeRun');
+      if (nextRun) {
+        setNextRunTime(parseInt(nextRun));
+      }
+
+      // Load history from localStorage
+      const savedHistory = localStorage.getItem('autoOptimizeHistory');
+      if (savedHistory) {
+        try {
+          setHistory(JSON.parse(savedHistory));
+        } catch (error) {
+          console.error('Failed to parse optimization history:', error);
+        }
+      }
+
+      // Load metrics from localStorage
+      const savedMetrics = localStorage.getItem('optimizationMetrics');
+      if (savedMetrics) {
+        try {
+          setOptimizationMetrics(JSON.parse(savedMetrics));
+        } catch (error) {
+          console.error('Failed to parse optimization metrics:', error);
+        }
+      }
+    };
+    
+    loadSettings();
+    
+    // Also fetch portfolio data if connected
+    if (connected && address) {
+      fetchPortfolioData(address);
     }
-  }, []);
+  }, [connected, address, fetchPortfolioData]);
 
   // Update settings in localStorage when they change
   useEffect(() => {
@@ -88,13 +109,7 @@ const AutoOptimizer = () => {
     return () => clearInterval(checkInterval);
   }, [isEnabled, nextRunTime]);
 
-  // Load portfolio data on mount
-  useEffect(() => {
-    if (connected && address) {
-      fetchPortfolioData(address);
-    }
-  }, [connected, address, fetchPortfolioData]);
-
+  // Function to toggle auto-optimization
   const toggleAutoOptimize = () => {
     const newStatus = !isEnabled;
     setIsEnabled(newStatus);
@@ -106,12 +121,59 @@ const AutoOptimizer = () => {
       const nextRun = now + (settings.interval * 60 * 60 * 1000);
       setNextRunTime(nextRun);
       localStorage.setItem('nextAutoOptimizeRun', nextRun.toString());
+      
+      // Update status information
+      setStatusInfo({
+        status: 'active',
+        message: `Auto-optimization enabled. Next run in ${formatTimeRemaining(nextRun)}`,
+        nextRun
+      });
+      
       showNotification('Auto-optimization enabled', 'success');
     } else {
+      // Clear scheduler
+      setStatusInfo({
+        status: 'disabled',
+        message: 'Auto-optimization disabled'
+      });
+      
       showNotification('Auto-optimization disabled', 'info');
     }
   };
 
+  // Format time remaining until next run
+  const formatTimeRemaining = (timestamp) => {
+    if (!timestamp) return 'Not scheduled';
+    
+    const now = Date.now();
+    const diff = timestamp - now;
+    
+    if (diff <= 0) return 'Imminent';
+    
+    const hours = Math.floor(diff / (60 * 60 * 1000));
+    const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+    
+    return `${hours}h ${minutes}m`;
+  };
+
+  // Schedule next run
+  const scheduleNextRun = () => {
+    if (!isEnabled) return;
+    
+    const now = Date.now();
+    const nextRun = now + (settings.interval * 60 * 60 * 1000);
+    setNextRunTime(nextRun);
+    localStorage.setItem('nextAutoOptimizeRun', nextRun.toString());
+    
+    // Update status info
+    setStatusInfo(prev => ({
+      ...prev,
+      nextRun,
+      message: `Next optimization in ${formatTimeRemaining(nextRun)}`
+    }));
+  };
+
+  // Function to execute rebalance
   const executeRebalance = async () => {
     if (isRebalancing || !connected) return;
     
@@ -145,17 +207,21 @@ const AutoOptimizer = () => {
       // Schedule next run
       scheduleNextRun();
       
+      // Update metrics
+      updateOptimizationMetrics(response.data);
+      
       // Show result notification
       showNotification(
         response.data.success 
-          ? 'Portfolio rebalance completed successfully' 
-          : 'Portfolio rebalance completed with some issues',
+          ? `Portfolio rebalance completed successfully` 
+          : `Portfolio rebalance completed with some issues`,
         response.data.success ? 'success' : 'warning'
       );
       
       // Refresh portfolio data
       fetchPortfolioData(address);
       
+      return response.data;
     } catch (error) {
       console.error('Rebalance error:', error);
       
@@ -175,20 +241,42 @@ const AutoOptimizer = () => {
       const retryTime = Date.now() + (settings.interval * 60 * 60 * 1000 / 2);
       setNextRunTime(retryTime);
       localStorage.setItem('nextAutoOptimizeRun', retryTime.toString());
+      
+      return { success: false, error: error.message };
     } finally {
       setIsRebalancing(false);
     }
   };
 
-  const scheduleNextRun = () => {
-    if (!isEnabled) return;
+  // Update optimization metrics
+  const updateOptimizationMetrics = (data) => {
+    const currentMetrics = optimizationMetrics || {
+      totalOptimizations: 0,
+      totalValueSaved: 0,
+      averageAPRIncrease: 0,
+      totalAPRIncrease: 0
+    };
     
-    const now = Date.now();
-    const nextRun = now + (settings.interval * 60 * 60 * 1000);
-    setNextRunTime(nextRun);
-    localStorage.setItem('nextAutoOptimizeRun', nextRun.toString());
+    // Calculate new metrics
+    const newTotalOptimizations = currentMetrics.totalOptimizations + 1;
+    const newValueSaved = currentMetrics.totalValueSaved + (data.valueSaved || 0);
+    const newTotalAPRIncrease = currentMetrics.totalAPRIncrease + (data.aprIncrease || 0);
+    const newAverageAPRIncrease = newTotalAPRIncrease / newTotalOptimizations;
+    
+    const updatedMetrics = {
+      totalOptimizations: newTotalOptimizations,
+      totalValueSaved: newValueSaved,
+      averageAPRIncrease: newAverageAPRIncrease,
+      totalAPRIncrease: newTotalAPRIncrease,
+      lastOptimizationDate: new Date().toISOString()
+    };
+    
+    // Update state and save to localStorage
+    setOptimizationMetrics(updatedMetrics);
+    localStorage.setItem('optimizationMetrics', JSON.stringify(updatedMetrics));
   };
 
+  // Add entry to history
   const addToHistory = (entry) => {
     const updatedHistory = [entry, ...history];
     if (updatedHistory.length > 10) {
@@ -198,9 +286,19 @@ const AutoOptimizer = () => {
     localStorage.setItem('autoOptimizeHistory', JSON.stringify(updatedHistory));
   };
 
+  // Handle saving settings
   const handleSaveSettings = (newSettings) => {
     setSettings(newSettings);
+    localStorage.setItem('autoOptimizerSettings', JSON.stringify(newSettings));
     showNotification('Settings saved successfully', 'success');
+    
+    // If auto-optimize is enabled, reschedule next run
+    if (isEnabled) {
+      const now = Date.now();
+      const nextRun = now + (newSettings.interval * 60 * 60 * 1000);
+      setNextRunTime(nextRun);
+      localStorage.setItem('nextAutoOptimizeRun', nextRun.toString());
+    }
   };
 
   return (
@@ -242,6 +340,12 @@ const AutoOptimizer = () => {
                   nextRun={nextRunTime}
                   onExecuteNow={executeRebalance}
                   isRebalancing={isRebalancing}
+                  settings={settings}
+                  metrics={optimizationMetrics}
+                  strategy={{
+                    name: 'Balanced Yield',
+                    expectedAPR: portfolio?.expectedAPR || 7.5
+                  }}
                 />
               </CardContent>
             </Card>

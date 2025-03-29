@@ -1,478 +1,525 @@
-/**
- * Wallet service for interacting with blockchain wallets
- * Supports Petra, Martian, Pontem, and other Aptos wallets
- */
+// walletService.js - Wallet integration service for CompounDefi
+// Handles wallet connection, signatures, and Aptos blockchain interactions
 
-// Available wallet providers
-const WALLET_PROVIDERS = {
-  PETRA: 'petra',
-  MARTIAN: 'martian',
-  PONTEM: 'pontem',
-  RISE: 'rise',
-  FEWCHA: 'fewcha'
+import { AptosClient, AptosAccount, FaucetClient, Types } from 'aptos';
+import { 
+  WalletClient, 
+  Network, 
+  NetworkToChainId, 
+  NetworkToNodeUrl 
+} from '@martiandao/aptos-web3-bip44.js';
+import apiService from './api';
+import storageService from './storageService';
+
+// Default network
+const DEFAULT_NETWORK = process.env.REACT_APP_APTOS_NETWORK || 'mainnet';
+
+// Aptos network configurations
+const NETWORK_CONFIG = {
+  mainnet: {
+    nodeUrl: 'https://fullnode.mainnet.aptoslabs.com/v1',
+    chainId: 1,
+    name: 'Mainnet',
+    explorerUrl: 'https://explorer.aptoslabs.com'
+  },
+  testnet: {
+    nodeUrl: 'https://fullnode.testnet.aptoslabs.com/v1',
+    chainId: 2,
+    name: 'Testnet',
+    explorerUrl: 'https://explorer.aptoslabs.com/testnet'
+  },
+  devnet: {
+    nodeUrl: 'https://fullnode.devnet.aptoslabs.com/v1',
+    chainId: 33,
+    name: 'Devnet',
+    explorerUrl: 'https://explorer.aptoslabs.com/devnet'
+  }
 };
 
 class WalletService {
   constructor() {
-    this.connectedWallet = null;
-    this.walletProvider = null;
-    this.address = null;
-    this.publicKey = null;
-    this.networkInfo = null;
+    this.network = DEFAULT_NETWORK;
+    this.client = null;
+    this.walletClient = null;
+    this.account = null;
     this.isConnected = false;
-    this.listeners = [];
-    this.aptosClient = null;
+    this.walletType = null; // 'petra', 'martian', 'pontem', etc.
+    this.availableWallets = [];
+    
+    // Initialize wallet service
+    this.init();
   }
-
+  
   /**
-   * Initialize the wallet service
+   * Initialize wallet service
    */
-  init() {
-    this.detectWallets();
-    this.checkPreviousConnection();
-    this.setupWindowListeners();
+  async init() {
+    try {
+      // Initialize Aptos client
+      this.client = new AptosClient(NETWORK_CONFIG[this.network].nodeUrl);
+      
+      // Check for available wallets
+      this.detectWallets();
+      
+      // Check if previously connected
+      this.restoreConnection();
+    } catch (error) {
+      console.error('Failed to initialize wallet service:', error);
+    }
   }
-
+  
   /**
-   * Detect available wallet providers in the browser
-   * @returns {Array} Available wallets
+   * Detect available wallet extensions
    */
   detectWallets() {
     const availableWallets = [];
-
-    if (window.aptos) {
+    
+    // Check for Petra wallet
+    if (window.petra) {
       availableWallets.push({
         name: 'Petra',
-        provider: WALLET_PROVIDERS.PETRA,
-        icon: '/assets/images/wallets/petra.png',
-        instance: window.aptos,
-        installed: true
+        id: 'petra',
+        icon: '/assets/wallet-icons/petra.svg'
       });
     }
-
+    
+    // Check for Martian wallet
     if (window.martian) {
       availableWallets.push({
         name: 'Martian',
-        provider: WALLET_PROVIDERS.MARTIAN,
-        icon: '/assets/images/wallets/martian.png',
-        instance: window.martian,
-        installed: true
+        id: 'martian',
+        icon: '/assets/wallet-icons/martian.svg'
       });
     }
-
+    
+    // Check for Pontem wallet
     if (window.pontem) {
       availableWallets.push({
         name: 'Pontem',
-        provider: WALLET_PROVIDERS.PONTEM,
-        icon: '/assets/images/wallets/pontem.png',
-        instance: window.pontem,
-        installed: true
+        id: 'pontem',
+        icon: '/assets/wallet-icons/pontem.svg'
       });
     }
-
-    // Add Rise Wallet if available
+    
+    // Check for Rise wallet
     if (window.rise) {
       availableWallets.push({
-        name: 'Rise Wallet',
-        provider: WALLET_PROVIDERS.RISE,
-        icon: '/assets/images/wallets/rise.png',
-        instance: window.rise,
-        installed: true
+        name: 'Rise',
+        id: 'rise',
+        icon: '/assets/wallet-icons/rise.svg'
       });
     }
-
-    // Add other wallets as needed
-
+    
+    // Update available wallets
     this.availableWallets = availableWallets;
+    
     return availableWallets;
   }
-
+  
   /**
-   * Check for previous wallet connection and restore it
+   * Get available wallets
+   * @returns {Array} Available wallet extensions
    */
-  async checkPreviousConnection() {
-    try {
-      const savedProvider = localStorage.getItem('walletProvider');
-      const savedAddress = localStorage.getItem('walletAddress');
-      
-      if (savedProvider && savedAddress) {
-        const wallet = this.availableWallets.find(w => w.provider === savedProvider);
-        
-        if (wallet && wallet.installed) {
-          // Attempt to reconnect
-          await this.connectWallet(wallet.provider);
-        }
+  getAvailableWallets() {
+    return this.availableWallets;
+  }
+  
+  /**
+   * Restore previous wallet connection
+   */
+  async restoreConnection() {
+    const savedWallet = storageService.getWallet();
+    if (savedWallet && savedWallet.type && savedWallet.address) {
+      try {
+        await this.connectWallet(savedWallet.type);
+      } catch (error) {
+        console.error('Failed to restore wallet connection:', error);
+        // Clear saved wallet data on connection failure
+        storageService.clearWallet();
       }
-    } catch (error) {
-      console.error('Failed to restore previous wallet connection:', error);
-      this.clearSavedConnection();
     }
   }
-
-  /**
-   * Set up window event listeners for wallet changes
-   */
-  setupWindowListeners() {
-    // Listen for account changes
-    window.addEventListener('aptos#accountChanged', this.handleAccountChanged.bind(this));
-    window.addEventListener('martian#accountChanged', this.handleAccountChanged.bind(this));
-    window.addEventListener('pontem#accountChanged', this.handleAccountChanged.bind(this));
-    
-    // Listen for network changes
-    window.addEventListener('aptos#networkChanged', this.handleNetworkChanged.bind(this));
-    window.addEventListener('martian#networkChanged', this.handleNetworkChanged.bind(this));
-    window.addEventListener('pontem#networkChanged', this.handleNetworkChanged.bind(this));
-    
-    // Listen for disconnect events
-    window.addEventListener('aptos#disconnect', this.handleDisconnect.bind(this));
-    window.addEventListener('martian#disconnect', this.handleDisconnect.bind(this));
-    window.addEventListener('pontem#disconnect', this.handleDisconnect.bind(this));
-  }
-
-  /**
-   * Handle account change event
-   * @param {Event} event - Account changed event
-   */
-  async handleAccountChanged(event) {
-    console.log('Account changed:', event);
-    
-    try {
-      // Update wallet information
-      if (this.connectedWallet) {
-        const accountInfo = await this.connectedWallet.account();
-        this.updateWalletInfo(accountInfo);
-        
-        // Notify listeners
-        this.notifyListeners('accountChanged', accountInfo);
-      }
-    } catch (error) {
-      console.error('Error handling account change:', error);
-      // If account info can't be retrieved, disconnect
-      this.disconnect();
-    }
-  }
-
-  /**
-   * Handle network change event
-   * @param {Event} event - Network changed event
-   */
-  async handleNetworkChanged(event) {
-    console.log('Network changed:', event);
-    
-    try {
-      // Update network information
-      if (this.connectedWallet) {
-        const network = await this.connectedWallet.network();
-        this.networkInfo = network;
-        
-        // Notify listeners
-        this.notifyListeners('networkChanged', network);
-      }
-    } catch (error) {
-      console.error('Error handling network change:', error);
-    }
-  }
-
-  /**
-   * Handle wallet disconnect event
-   */
-  handleDisconnect() {
-    this.disconnect();
-    // Notify listeners
-    this.notifyListeners('disconnect');
-  }
-
+  
   /**
    * Connect to a wallet
-   * @param {string} provider - Wallet provider name
-   * @returns {Object} Connection result
+   * @param {string} walletType - Type of wallet to connect
+   * @returns {Object} Wallet account info
    */
-  async connectWallet(provider) {
+  async connectWallet(walletType) {
     try {
-      // Find the wallet provider
-      const wallet = this.availableWallets.find(w => w.provider === provider);
+      let account;
       
-      if (!wallet || !wallet.installed) {
-        throw new Error(`Wallet ${provider} not found or not installed`);
+      switch (walletType) {
+        case 'petra':
+          if (!window.petra) {
+            throw new Error('Petra wallet extension not found');
+          }
+          await window.petra.connect();
+          account = await window.petra.account();
+          this.walletClient = window.petra;
+          break;
+          
+        case 'martian':
+          if (!window.martian) {
+            throw new Error('Martian wallet extension not found');
+          }
+          await window.martian.connect();
+          account = await window.martian.account();
+          this.walletClient = window.martian;
+          break;
+          
+        case 'pontem':
+          if (!window.pontem) {
+            throw new Error('Pontem wallet extension not found');
+          }
+          await window.pontem.connect();
+          account = await window.pontem.account();
+          this.walletClient = window.pontem;
+          break;
+          
+        case 'rise':
+          if (!window.rise) {
+            throw new Error('Rise wallet extension not found');
+          }
+          await window.rise.connect();
+          account = await window.rise.account();
+          this.walletClient = window.rise;
+          break;
+          
+        default:
+          throw new Error(`Unsupported wallet type: ${walletType}`);
       }
       
-      // Connect to wallet
-      const response = await wallet.instance.connect();
-      const accountInfo = await wallet.instance.account();
-      const network = await wallet.instance.network();
-      
-      // Update wallet information
-      this.connectedWallet = wallet.instance;
-      this.walletProvider = wallet.provider;
-      this.updateWalletInfo(accountInfo);
-      this.networkInfo = network;
+      // Update wallet status
+      this.account = account;
+      this.walletType = walletType;
       this.isConnected = true;
       
-      // Save connection info
-      this.saveConnection();
+      // Save wallet connection
+      storageService.saveWallet({
+        type: walletType,
+        address: account.address
+      });
       
-      // Notify listeners
-      this.notifyListeners('connect', this.getWalletInfo());
+      // Authenticate with backend
+      await this.authenticateWallet();
       
-      return this.getWalletInfo();
+      return account;
     } catch (error) {
-      console.error('Wallet connection error:', error);
+      console.error(`Error connecting to ${walletType} wallet:`, error);
       this.disconnect();
       throw error;
     }
   }
-
+  
   /**
-   * Update wallet information
-   * @param {Object} accountInfo - Account information from wallet
-   */
-  updateWalletInfo(accountInfo) {
-    if (accountInfo) {
-      this.address = accountInfo.address;
-      this.publicKey = accountInfo.publicKey;
-    }
-  }
-
-  /**
-   * Disconnect from current wallet
+   * Disconnect from wallet
    */
   disconnect() {
-    if (this.connectedWallet) {
-      // Try to call disconnect on the wallet if available
-      try {
-        if (typeof this.connectedWallet.disconnect === 'function') {
-          this.connectedWallet.disconnect();
-        }
-      } catch (error) {
-        console.warn('Error disconnecting wallet:', error);
-      }
-    }
-    
-    // Reset wallet state
-    this.connectedWallet = null;
-    this.walletProvider = null;
-    this.address = null;
-    this.publicKey = null;
+    this.account = null;
     this.isConnected = false;
+    this.walletType = null;
+    this.walletClient = null;
     
-    // Clear saved connection
-    this.clearSavedConnection();
-    
-    // Notify listeners
-    this.notifyListeners('disconnect');
+    // Clear wallet data
+    storageService.clearWallet();
   }
-
+  
   /**
-   * Save connection info to localStorage
+   * Check if wallet is connected
+   * @returns {boolean} Connection status
    */
-  saveConnection() {
-    if (this.walletProvider && this.address) {
-      localStorage.setItem('walletProvider', this.walletProvider);
-      localStorage.setItem('walletAddress', this.address);
-    }
+  checkConnection() {
+    return this.isConnected && !!this.account;
   }
-
+  
   /**
-   * Clear saved connection info
+   * Get connected account
+   * @returns {Object} Wallet account
    */
-  clearSavedConnection() {
-    localStorage.removeItem('walletProvider');
-    localStorage.removeItem('walletAddress');
+  getAccount() {
+    return this.account;
   }
-
+  
   /**
-   * Get wallet information
-   * @returns {Object} Wallet information
+   * Authenticate with the backend using wallet signature
    */
-  getWalletInfo() {
-    return {
-      provider: this.walletProvider,
-      address: this.address,
-      publicKey: this.publicKey,
-      isConnected: this.isConnected,
-      network: this.networkInfo,
-      walletName: this.availableWallets.find(w => w.provider === this.walletProvider)?.name || 'Unknown'
-    };
-  }
-
-  /**
-   * Add a listener for wallet events
-   * @param {Function} listener - Listener function
-   */
-  addListener(listener) {
-    if (typeof listener === 'function' && !this.listeners.includes(listener)) {
-      this.listeners.push(listener);
-    }
-  }
-
-  /**
-   * Remove a listener
-   * @param {Function} listener - Listener to remove
-   */
-  removeListener(listener) {
-    this.listeners = this.listeners.filter(l => l !== listener);
-  }
-
-  /**
-   * Notify all listeners of an event
-   * @param {string} event - Event name
-   * @param {any} data - Event data
-   */
-  notifyListeners(event, data) {
-    this.listeners.forEach(listener => {
-      try {
-        listener(event, data);
-      } catch (error) {
-        console.error('Error in wallet listener:', error);
-      }
-    });
-  }
-
-  /**
-   * Execute a transaction
-   * @param {Object} payload - Transaction payload
-   * @param {Object} options - Transaction options
-   * @returns {Object} Transaction result
-   */
-  async executeTransaction(payload, options = {}) {
-    if (!this.isConnected || !this.connectedWallet) {
-      throw new Error('Wallet not connected');
-    }
-    
+  async authenticateWallet() {
     try {
-      // Add default options if not provided
-      const txOptions = {
-        max_gas_amount: options.maxGasAmount || '2000',
-        gas_unit_price: options.gasUnitPrice || '100',
-        expiration_timestamp_secs: Math.floor(Date.now() / 1000) + 600, // 10 minutes from now
-        ...options
-      };
-      
-      // Execute transaction
-      const pendingTx = await this.connectedWallet.signAndSubmitTransaction(payload, txOptions);
-      
-      // Notify listeners about the pending transaction
-      this.notifyListeners('transactionSubmitted', pendingTx);
-      
-      // If transaction hash is available, you might want to monitor the transaction
-      if (pendingTx.hash) {
-        this.monitorTransaction(pendingTx.hash);
+      if (!this.account || !this.walletClient) {
+        throw new Error('Wallet not connected');
       }
       
-      return pendingTx;
+      // Get nonce from server
+      const nonceResponse = await apiService.user.getWalletNonce(this.account.address);
+      const message = nonceResponse.message;
+      
+      // Sign the message with wallet
+      const signature = await this.signMessage(message);
+      
+      // Verify signature with backend and get token
+      const authResponse = await apiService.user.registerWithWallet(
+        this.account.address,
+        signature,
+        message
+      );
+      
+      return authResponse;
     } catch (error) {
-      console.error('Transaction execution error:', error);
-      
-      // Notify listeners about the transaction error
-      this.notifyListeners('transactionError', error);
-      
+      console.error('Error authenticating wallet:', error);
       throw error;
     }
   }
-
-  /**
-   * Monitor a transaction's status
-   * @param {string} txHash - Transaction hash
-   */
-  async monitorTransaction(txHash) {
-    // This is a simplified implementation
-    // You might want to use a more sophisticated approach for production
-    
-    try {
-      // Start polling for transaction status
-      const MAX_ATTEMPTS = 10;
-      const POLL_INTERVAL = 2000; // 2 seconds
-      
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        // Wait for the polling interval
-        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-        
-        try {
-          // Fetch transaction status
-          // This assumes you're using the Aptos SDK or have set up aptosClient
-          if (this.aptosClient) {
-            const txInfo = await this.aptosClient.getTransactionByHash(txHash);
-            
-            // Check if transaction is confirmed
-            if (txInfo && txInfo.success !== undefined) {
-              // Transaction is confirmed
-              this.notifyListeners('transactionConfirmed', {
-                hash: txHash,
-                success: txInfo.success,
-                data: txInfo
-              });
-              
-              return txInfo;
-            }
-          }
-        } catch (error) {
-          console.warn(`Attempt ${attempt + 1} to fetch transaction failed:`, error);
-          // Continue polling
-        }
-      }
-      
-      // If we've reached this point, we've exceeded the maximum number of attempts
-      console.warn(`Transaction monitoring exceeded ${MAX_ATTEMPTS} attempts for hash: ${txHash}`);
-      
-    } catch (error) {
-      console.error('Error monitoring transaction:', error);
-    }
-  }
-
+  
   /**
    * Sign a message with the connected wallet
    * @param {string} message - Message to sign
-   * @returns {Object} Signature information
+   * @returns {string} Signature
    */
   async signMessage(message) {
-    if (!this.isConnected || !this.connectedWallet) {
-      throw new Error('Wallet not connected');
-    }
-    
     try {
-      // Sign message
-      const signResponse = await this.connectedWallet.signMessage({
-        message: message
-      });
+      if (!this.walletClient || !this.account) {
+        throw new Error('Wallet not connected');
+      }
       
-      return signResponse;
+      let signature;
+      
+      // Different wallets have slightly different signing methods
+      switch (this.walletType) {
+        case 'petra':
+          signature = await window.petra.signMessage({
+            message,
+            address: this.account.address
+          });
+          break;
+          
+        case 'martian':
+          signature = await window.martian.signMessage({
+            message,
+            address: this.account.address
+          });
+          break;
+          
+        case 'pontem':
+          signature = await window.pontem.signMessage(message);
+          break;
+          
+        case 'rise':
+          signature = await window.rise.signMessage({
+            message,
+            address: this.account.address
+          });
+          break;
+          
+        default:
+          throw new Error(`Unsupported wallet type: ${this.walletType}`);
+      }
+      
+      return signature;
     } catch (error) {
-      console.error('Message signing error:', error);
+      console.error('Error signing message:', error);
       throw error;
     }
   }
-
+  
   /**
-   * Check if a wallet extension is installed
-   * @param {string} provider - Wallet provider name
-   * @returns {boolean} Whether the wallet is installed
+   * Sign and submit a transaction
+   * @param {Object} transaction - Transaction payload
+   * @returns {Object} Transaction result
    */
-  isWalletInstalled(provider) {
-    switch (provider) {
-      case WALLET_PROVIDERS.PETRA:
-        return !!window.aptos;
-      case WALLET_PROVIDERS.MARTIAN:
-        return !!window.martian;
-      case WALLET_PROVIDERS.PONTEM:
-        return !!window.pontem;
-      case WALLET_PROVIDERS.RISE:
-        return !!window.rise;
-      case WALLET_PROVIDERS.FEWCHA:
-        return !!window.fewcha;
-      default:
-        return false;
+  async signAndSubmitTransaction(transaction) {
+    try {
+      if (!this.walletClient || !this.account) {
+        throw new Error('Wallet not connected');
+      }
+      
+      // Sign and submit transaction
+      const response = await this.walletClient.signAndSubmitTransaction(transaction);
+      
+      return {
+        hash: response.hash,
+        success: true
+      };
+    } catch (error) {
+      console.error('Error signing and submitting transaction:', error);
+      throw error;
     }
   }
-
+  
   /**
-   * Initialize the Aptos client
-   * @param {Object} client - Aptos client instance
+   * Create a staking transaction for APT
+   * @param {string} protocol - Staking protocol
+   * @param {number} amount - Amount to stake
+   * @returns {Object} Transaction payload
    */
-  setAptosClient(client) {
-    this.aptosClient = client;
+  createStakingTransaction(protocol, amount) {
+    // Get contract address for protocol
+    const contractAddress = this.getContractAddress(protocol);
+    
+    // Get function name for staking
+    const functionName = this.getFunctionName(protocol, 'stake');
+    
+    // Convert amount to correct format (octas)
+    const amountInOctas = (amount * 100000000).toFixed(0);
+    
+    // Create transaction payload
+    const transaction = {
+      type: 'entry_function_payload',
+      function: `${contractAddress}${functionName}`,
+      type_arguments: [],
+      arguments: [amountInOctas.toString()]
+    };
+    
+    return transaction;
+  }
+  
+  /**
+   * Create an unstaking transaction for APT
+   * @param {string} protocol - Staking protocol
+   * @param {number} amount - Amount to unstake
+   * @returns {Object} Transaction payload
+   */
+  createUnstakingTransaction(protocol, amount) {
+    // Get contract address for protocol
+    const contractAddress = this.getContractAddress(protocol);
+    
+    // Get function name for unstaking
+    const functionName = this.getFunctionName(protocol, 'unstake');
+    
+    // Convert amount to correct format (octas)
+    const amountInOctas = (amount * 100000000).toFixed(0);
+    
+    // Create transaction payload
+    const transaction = {
+      type: 'entry_function_payload',
+      function: `${contractAddress}${functionName}`,
+      type_arguments: [],
+      arguments: [amountInOctas.toString()]
+    };
+    
+    return transaction;
+  }
+  
+  /**
+   * Get contract address for a protocol
+   * @param {string} protocol - Protocol name
+   * @returns {string} Contract address
+   */
+  getContractAddress(protocol) {
+    const contracts = {
+      amnis: "0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a",
+      thala: "0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6",
+      tortuga: "0x952c1b1fc8eb75ee80f432c9d0a84fcda1d5c7481501a7eca9199f1596a60b53",
+      ditto: "0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5",
+      aries: "0x9770fa9c725cbd97eb50b2be5f7416efdfd1f1554beb0750d4dae4c64e860da3",
+      echo: "0xeab7ea4d635b6b6add79d5045c4a45d8148d88287b1cfa1c3b6a4b56f46839ed",
+      pancakeswap: "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa",
+      liquidswap: "0x190d44266241744264b964a37b8f09863167a12d3e70cda39376cfb4e3561e12"
+    };
+    
+    return contracts[protocol.toLowerCase()] || null;
+  }
+  
+  /**
+   * Get function name for a protocol and operation
+   * @param {string} protocol - Protocol name
+   * @param {string} operation - Operation type
+   * @returns {string} Function name
+   */
+  getFunctionName(protocol, operation) {
+    const functionMappings = {
+      'amnis': { 
+        'stake': '::staking::stake', 
+        'unstake': '::staking::unstake', 
+        'lend': '::lending::supply', 
+        'withdraw': '::lending::withdraw', 
+        'addLiquidity': '::router::add_liquidity', 
+        'removeLiquidity': '::router::remove_liquidity',
+        'swap': '::router::swap_exact_input'
+      },
+      'thala': { 
+        'stake': '::staking::stake_apt', 
+        'unstake': '::staking::unstake_apt', 
+        'lend': '::lending::supply_apt', 
+        'withdraw': '::lending::withdraw_apt', 
+        'addLiquidity': '::router::add_liquidity', 
+        'removeLiquidity': '::router::remove_liquidity',
+        'swap': '::router::swap_exact_input'
+      },
+      'tortuga': { 
+        'stake': '::staking::stake_apt', 
+        'unstake': '::staking::unstake_apt' 
+      },
+      'ditto': { 
+        'stake': '::staking::stake', 
+        'unstake': '::staking::unstake' 
+      },
+      'aries': { 
+        'lend': '::lending::supply', 
+        'withdraw': '::lending::withdraw' 
+      },
+      'echo': { 
+        'lend': '::lending::supply',
+        'withdraw': '::lending::withdraw' 
+      }
+    };
+    
+    // Check for protocol-specific function
+    if (functionMappings[protocol.toLowerCase()]?.[operation.toLowerCase()]) {
+      return functionMappings[protocol.toLowerCase()][operation.toLowerCase()];
+    }
+    
+    // Default function names by operation type
+    const defaultFunctions = {
+      'stake': '::staking::stake',
+      'unstake': '::staking::unstake',
+      'lend': '::lending::supply',
+      'withdraw': '::lending::withdraw',
+      'addLiquidity': '::router::add_liquidity',
+      'removeLiquidity': '::router::remove_liquidity',
+      'swap': '::router::swap_exact_input'
+    };
+    
+    return defaultFunctions[operation.toLowerCase()] || `::${operation.toLowerCase()}::execute`;
+  }
+  
+  /**
+   * Get transaction URL in explorer
+   * @param {string} txHash - Transaction hash
+   * @returns {string} Explorer URL
+   */
+  getExplorerUrl(txHash) {
+    const baseUrl = NETWORK_CONFIG[this.network].explorerUrl;
+    return `${baseUrl}/txn/${txHash}`;
+  }
+  
+  /**
+   * Get account URL in explorer
+   * @param {string} address - Account address
+   * @returns {string} Explorer URL
+   */
+  getAccountExplorerUrl(address) {
+    const baseUrl = NETWORK_CONFIG[this.network].explorerUrl;
+    return `${baseUrl}/account/${address}`;
+  }
+  
+  /**
+   * Get amount in APT format from octas
+   * @param {string|number} octas - Amount in octas
+   * @returns {number} Amount in APT
+   */
+  convertOctasToApt(octas) {
+    return parseFloat(octas) / 100000000;
+  }
+  
+  /**
+   * Get amount in octas format from APT
+   * @param {number} apt - Amount in APT
+   * @returns {string} Amount in octas as string
+   */
+  convertAptToOctas(apt) {
+    return (parseFloat(apt) * 100000000).toFixed(0);
   }
 }
 
-// Create and export a singleton instance
-const walletService = new WalletService();
-export default walletService;
+export default new WalletService();

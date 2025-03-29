@@ -1,266 +1,229 @@
 import React, { useState, useEffect } from 'react';
-import { formatDistance } from 'date-fns';
-import { ExternalLinkIcon, FilterIcon, RefreshIcon } from '@heroicons/react/outline';
+import { useWallet } from '../../hooks/useWallet';
+import { useTransactions } from '../../hooks/useTransactions';
+import { formatDistanceToNow } from 'date-fns';
 
-const TransactionHistory = ({ walletAddress }) => {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('all'); // 'all', 'staking', 'lending', 'swap'
+const TransactionHistory = () => {
+  const { isConnected, address, connectWallet } = useWallet();
+  const { fetchTransactions, transactions, loading } = useTransactions();
+  const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
 
   useEffect(() => {
-    if (walletAddress) {
-      fetchTransactionHistory(walletAddress);
+    if (isConnected && address) {
+      fetchTransactions(address, page, pageSize);
     }
-  }, [walletAddress]);
+  }, [isConnected, address, page, pageSize, fetchTransactions]);
 
-  const fetchTransactionHistory = async (address) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Try to use portfolio data cache from parent components
-      if (window.dh?.portfolioData?.recentTransactions) {
-        setTransactions(window.dh.portfolioData.recentTransactions);
-        setLoading(false);
-        return;
-      }
-      
-      // Fetch from API if not available in cache
-      const response = await fetch(`/api/wallet/${address}/transactions`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch transaction history');
-      }
-      
-      const data = await response.json();
-      setTransactions(data.transactions || []);
-    } catch (err) {
-      console.error('Error fetching transaction history:', err);
-      setError(err.message);
-      
-      // Try to use fallback from global state
-      if (window.dh?.portfolioData?.portfolio?.recentTransactions) {
-        setTransactions(window.dh.portfolioData.portfolio.recentTransactions);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRefresh = () => {
-    if (walletAddress) {
-      fetchTransactionHistory(walletAddress);
-    }
-  };
-
-  const getTransactionTypeIcon = (type) => {
-    switch (type.toLowerCase()) {
-      case 'staking':
-        return (
-          <div className="bg-blue-500 bg-opacity-20 p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M5 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2V9z" />
-              <path d="M5 3a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2V3z" />
-            </svg>
-          </div>
-        );
-      case 'unstaking':
-        return (
-          <div className="bg-purple-500 bg-opacity-20 p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
-            </svg>
-          </div>
-        );
-      case 'swap':
-        return (
-          <div className="bg-green-500 bg-opacity-20 p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" />
-            </svg>
-          </div>
-        );
-      case 'add liquidity':
-      case 'remove liquidity':
-        return (
-          <div className="bg-yellow-500 bg-opacity-20 p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zm7-10a1 1 0 01.707.293l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 8l-3.293-3.293A1 1 0 0112 3z" clipRule="evenodd" />
-            </svg>
-          </div>
-        );
-      case 'transfer':
-        return (
-          <div className="bg-indigo-500 bg-opacity-20 p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-500" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" />
-            </svg>
-          </div>
-        );
-      default:
-        return (
-          <div className="bg-gray-500 bg-opacity-20 p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-            </svg>
-          </div>
-        );
-    }
-  };
-
-  const filteredTransactions = transactions.filter(tx => {
-    if (filter === 'all') return true;
-    return tx.type.toLowerCase().includes(filter.toLowerCase());
-  });
+  if (!isConnected) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Transaction History</h2>
+        <div className="text-center py-6">
+          <p className="text-gray-600 dark:text-gray-400 mb-4">Connect your wallet to view your transaction history</p>
+          <button 
+            onClick={connectWallet}
+            className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded transition-colors"
+          >
+            Connect Wallet
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4 animate-pulse">
-        <div className="flex justify-between items-center mb-4">
-          <div className="h-6 bg-gray-700 rounded w-1/3"></div>
-          <div className="h-8 bg-gray-700 rounded w-24"></div>
-        </div>
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((_, idx) => (
-            <div key={idx} className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
-                <div className="space-y-2">
-                  <div className="h-4 bg-gray-700 rounded w-24"></div>
-                  <div className="h-3 bg-gray-700 rounded w-16"></div>
-                </div>
-              </div>
-              <div className="h-4 bg-gray-700 rounded w-20"></div>
-            </div>
-          ))}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Transaction History</h2>
+        <div className="flex justify-center items-center h-40">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       </div>
     );
   }
 
-  if (error && transactions.length === 0) {
+  // Filter transactions
+  const filteredTransactions = transactions.filter(tx => {
+    if (filter === 'all') return true;
+    return tx.type === filter;
+  });
+
+  const getTransactionTypeDisplay = (type) => {
+    const typeMap = {
+      'stake': 'Stake',
+      'unstake': 'Unstake',
+      'addLiquidity': 'Add Liquidity',
+      'removeLiquidity': 'Remove Liquidity',
+      'swap': 'Swap',
+      'transfer': 'Transfer',
+      'lend': 'Lend',
+      'withdraw': 'Withdraw',
+      'other': 'Other'
+    };
+    return typeMap[type] || type;
+  };
+
+  const getTransactionStatusBadge = (status) => {
+    const statusClasses = {
+      'pending': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+      'confirmed': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+      'failed': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+    };
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
-        <div className="text-center py-4">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <h3 className="text-lg font-medium text-red-400">Error Loading Transactions</h3>
-          <p className="text-gray-400 mt-1">{error}</p>
-          <button 
-            className="mt-3 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm font-medium"
-            onClick={handleRefresh}
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
+      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClasses[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'}`}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
     );
-  }
+  };
+
+  const getTransactionIcon = (type) => {
+    const iconMap = {
+      'stake': '🥩',
+      'unstake': '📤',
+      'addLiquidity': '💧',
+      'removeLiquidity': '🚰',
+      'swap': '🔄',
+      'transfer': '📤',
+      'lend': '💰',
+      'withdraw': '🏧',
+      'other': '📝'
+    };
+    return iconMap[type] || '📝';
+  };
+
+  const viewTransaction = (hash) => {
+    const explorerUrl = `https://explorer.aptoslabs.com/txn/${hash}?network=mainnet`;
+    window.open(explorerUrl, '_blank');
+  };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-white">Transaction History</h2>
-        <div className="flex space-x-2">
-          <div className="relative">
-            <button className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center" onClick={() => setFilter(filter === 'all' ? 'staking' : 'all')}>
-              <FilterIcon className="h-4 w-4 mr-1" />
-              <span>{filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}</span>
-            </button>
-            {filter !== 'all' && (
-              <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-blue-500 rounded-full border border-gray-800"></div>
-            )}
-          </div>
-          <button 
-            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg"
-            onClick={handleRefresh}
-            title="Refresh"
-          >
-            <RefreshIcon className="h-5 w-5 text-gray-300" />
-          </button>
-        </div>
-      </div>
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+      <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Transaction History</h2>
       
-      {transactions.length === 0 ? (
+      {/* Filter tabs */}
+      <div className="flex space-x-2 mb-4 overflow-x-auto pb-2">
+        <button 
+          onClick={() => setFilter('all')}
+          className={`px-3 py-1 rounded-md text-sm font-medium ${
+            filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+          }`}
+        >
+          All
+        </button>
+        {['stake', 'unstake', 'swap', 'addLiquidity', 'removeLiquidity', 'lend', 'withdraw'].map(type => (
+          <button 
+            key={type}
+            onClick={() => setFilter(type)}
+            className={`px-3 py-1 rounded-md text-sm font-medium whitespace-nowrap ${
+              filter === type ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+            }`}
+          >
+            {getTransactionTypeDisplay(type)}
+          </button>
+        ))}
+      </div>
+
+      {filteredTransactions.length === 0 ? (
         <div className="text-center py-6">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <h3 className="text-gray-400 font-medium">No transactions found</h3>
-          <p className="text-gray-500 text-sm mt-1">This wallet has no transaction history.</p>
+          <p className="text-gray-600 dark:text-gray-400">No transactions found</p>
         </div>
       ) : (
-        <div className="overflow-y-auto max-h-96 pr-1">
-          {filteredTransactions.map((tx, idx) => (
-            <div 
-              key={tx.hash || idx} 
-              className={`flex items-center justify-between py-3 ${idx !== 0 ? 'border-t border-gray-700' : ''}`}
-            >
-              <div className="flex items-center space-x-3">
-                {getTransactionTypeIcon(tx.type)}
-                <div>
-                  <div className="flex items-center">
-                    <h4 className="font-medium text-white">{tx.type}</h4>
-                    {tx.protocol && (
-                      <span className="ml-2 text-xs py-0.5 px-2 bg-blue-900 bg-opacity-40 text-blue-400 rounded-full">
-                        {tx.protocol}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm text-gray-400">
-                    <span title={new Date(tx.timestamp).toLocaleString()}>
-                      {formatDistance(new Date(tx.timestamp), new Date(), { addSuffix: true })}
-                    </span>
-                    {tx.hash && (
-                      <a 
-                        href={`https://explorer.aptoslabs.com/txn/${tx.hash}?network=mainnet`}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300"
-                      >
-                        <ExternalLinkIcon className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
-                              <div className="text-right">
-                <div className={`font-medium ${tx.success ? 'text-green-400' : 'text-red-400'}`}>
-                  {tx.impactInApt && (
-                    <span>{tx.impactInApt} APT</span>
-                  )}
-                  {tx.valueUSD && tx.impactInApt && (
-                    <span className="text-xs text-gray-400 block">${parseFloat(tx.valueUSD).toFixed(2)}</span>
-                  )}
-                </div>
-                {tx.success === false && (
-                  <span className="text-xs text-red-400">Failed</span>
-                )}
-                {tx.gasUsed && (
-                  <span className="text-xs text-gray-500 block">Gas: {parseInt(tx.gasUsed).toLocaleString()}</span>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Type
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Details
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Time
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Status
+                </th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredTransactions.map((tx) => (
+                <tr key={tx.hash} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center text-xl">
+                        {getTransactionIcon(tx.type)}
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {getTransactionTypeDisplay(tx.type)}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {tx.protocol || ''}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-900 dark:text-white">
+                      {tx.amount ? `${tx.amount} ${tx.tokenSymbol || 'APT'}` : 'N/A'}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
+                      {tx.hash.substring(0, 8)}...{tx.hash.substring(tx.hash.length - 8)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      {tx.timestamp ? formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true }) : 'Unknown'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {getTransactionStatusBadge(tx.status)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => viewTransaction(tx.hash)}
+                      className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    >
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
-      
-      {transactions.length > 0 && filteredTransactions.length === 0 && (
-        <div className="text-center py-6">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-          </svg>
-          <h3 className="text-gray-400 font-medium">No matching transactions</h3>
-          <p className="text-gray-500 text-sm mt-1">Try changing your filter criteria.</p>
-          <button 
-            className="mt-3 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm font-medium"
-            onClick={() => setFilter('all')}
-          >
-            Show All Transactions
-          </button>
-        </div>
-      )}
+
+      {/* Pagination */}
+      <div className="flex justify-between items-center mt-4">
+        <button
+          onClick={() => setPage(Math.max(1, page - 1))}
+          disabled={page === 1}
+          className={`px-3 py-1 rounded-md text-sm font-medium ${
+            page === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'
+          }`}
+        >
+          Previous
+        </button>
+        <span className="text-sm text-gray-700 dark:text-gray-300">
+          Page {page}
+        </span>
+        <button
+          onClick={() => setPage(page + 1)}
+          disabled={filteredTransactions.length < pageSize}
+          className={`px-3 py-1 rounded-md text-sm font-medium ${
+            filteredTransactions.length < pageSize ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'
+          }`}
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 };

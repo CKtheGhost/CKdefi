@@ -1,51 +1,64 @@
-// src/components/common/Button.jsx
 import React from 'react';
+import { cva } from 'class-variance-authority';
+import { cn } from '../../utils/formatters';
 
-const Button = ({
+const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "underline-offset-4 hover:underline text-primary",
+        gradient: "bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700"
+      },
+      size: {
+        default: "h-10 py-2 px-4",
+        sm: "h-9 px-3 rounded-md",
+        lg: "h-11 px-8 rounded-md",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+const Button = React.forwardRef(({ 
+  className, 
+  variant, 
+  size, 
+  isLoading,
+  leftIcon,
+  rightIcon,
   children,
-  onClick,
-  variant = 'primary',
-  size = 'md',
-  disabled = false,
-  className = '',
-  ...props
-}) => {
-  // Variant styles
-  const variantClasses = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white',
-    secondary: 'bg-gray-600 hover:bg-gray-700 text-white',
-    outline: 'bg-transparent border border-gray-600 hover:border-gray-500 text-gray-300 hover:text-white',
-    ghost: 'bg-transparent hover:bg-gray-700 text-gray-300 hover:text-white',
-    danger: 'bg-red-600 hover:bg-red-700 text-white',
-    light: 'bg-gray-200 hover:bg-gray-300 text-gray-800',
-  };
-
-  // Size styles
-  const sizeClasses = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2',
-    lg: 'px-6 py-3 text-lg',
-  };
-
-  // Disabled state
-  const disabledClasses = disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
-
+  ...props 
+}, ref) => {
   return (
     <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`font-medium rounded-md transition-colors
-        ${variantClasses[variant] || variantClasses.primary}
-        ${sizeClasses[size] || sizeClasses.md}
-        ${disabledClasses}
-        ${className}
-      `}
+      className={cn(buttonVariants({ variant, size, className }))}
+      ref={ref}
+      disabled={isLoading || props.disabled}
       {...props}
     >
+      {isLoading && (
+        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      )}
+      {leftIcon && !isLoading && <span className="mr-2">{leftIcon}</span>}
       {children}
+      {rightIcon && <span className="ml-2">{rightIcon}</span>}
     </button>
   );
-};
+});
 
-export { Button };
-export default Button;
+Button.displayName = "Button";
+
+export { Button, buttonVariants };

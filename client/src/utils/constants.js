@@ -1,138 +1,179 @@
-// src/utils/constants.js
-// Application-wide constants
+// constants.js - Application-wide constants for CompounDefi
 
-/**
- * API Endpoints
- */
+// API endpoints
+export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 export const API_ENDPOINTS = {
-  // Core endpoints
-  PORTFOLIO: '/api/wallet/{address}',
-  MARKET_DATA: '/api/market/data',
-  STAKING_DATA: '/api/staking/rates',
-  AI_RECOMMENDATION: '/api/recommendations/ai',
-  NEWS: '/api/news/latest',
-  STATUS: '/api/status',
-  
-  // Protocol endpoints
-  PROTOCOL_STATS: '/api/protocols/stats',
-  PROTOCOL_DETAILS: '/api/protocols/{protocol}',
-  
-  // Auto-optimizer endpoints
-  AUTO_REBALANCE: '/api/auto-rebalance',
-  
-  // User endpoints
-  USER_PROFILE: '/api/user/profile',
-  USER_PREFERENCES: '/api/user/preferences'
+  STATUS: '/status',
+  TOKENS: '/tokens/latest',
+  NEWS: '/news/latest',
+  WALLET: (address) => `/wallet/${address}`,
+  TRANSACTIONS: (address) => `/wallet/${address}/transactions`,
+  STAKING_RATES: '/staking/rates',
+  CONTRACTS: '/contracts',
+  AI_RECOMMENDATION: '/recommendations/ai',
+  EXECUTE_STRATEGY: '/execute-strategy',
+  AUTO_REBALANCE: {
+    STATUS: '/auto-rebalance/status',
+    SETTINGS: '/auto-rebalance/settings',
+    EXECUTE: '/auto-rebalance/execute'
+  },
+  USER_PREFERENCES: '/user/preferences'
 };
 
-/**
- * Cache durations (in milliseconds)
- */
-export const CACHE_DURATIONS = {
-  MARKET_DATA: 5 * 60 * 1000,    // 5 minutes
-  PORTFOLIO: 2 * 60 * 1000,      // 2 minutes
-  STAKING_DATA: 10 * 60 * 1000,  // 10 minutes
-  NEWS: 15 * 60 * 1000,          // 15 minutes
-  PROTOCOLS: 30 * 60 * 1000      // 30 minutes
-};
-
-/**
- * Risk profiles for investment strategies
- */
+// Risk profiles
 export const RISK_PROFILES = {
   CONSERVATIVE: 'conservative',
   BALANCED: 'balanced',
   AGGRESSIVE: 'aggressive',
-  YIELD_OPTIMIZER: 'yield_optimizer',
-  STABLECOIN_YIELD: 'stablecoin_yield'
+  MAX_YIELD: 'maxYield'
 };
 
-/**
- * Contract addresses for Aptos DeFi protocols
- */
-export const CONTRACT_ADDRESSES = {
-  AMNIS: '0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a',
-  THALA: '0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6',
-  TORTUGA: '0x952c1b1fc8eb75ee80f432c9d0a84fcda1d5c7481501a7eca9199f1596a60b53',
-  DITTO: '0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5',
-  ARIES: '0x9770fa9c725cbd97eb50b2be5f7416efdfd1f1554beb0750d4dae4c64e860da3',
-  ECHO: '0xeab7ea4d635b6b6add79d5045c4a45d8148d88287b1cfa1c3b6a4b56f46839ed',
-  PANCAKESWAP: '0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa',
-  LIQUIDSWAP: '0x190d44266241744264b964a37b8f09863167a12d3e70cda39376cfb4e3561e12',
-  CETUS: '0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6'
+// Protocol categories
+export const PROTOCOL_CATEGORIES = {
+  STAKING: 'staking',
+  LENDING: 'lending',
+  DEX: 'dex',
+  YIELD: 'yield',
+  STABLECOIN: 'stablecoin'
 };
 
-/**
- * Function mappings for protocol operations
- */
-export const FUNCTION_MAPPINGS = {
-  amnis: { 
-    stake: '::staking::stake', 
-    unstake: '::staking::unstake', 
-    lend: '::lending::supply', 
-    withdraw: '::lending::withdraw', 
-    addLiquidity: '::router::add_liquidity', 
-    removeLiquidity: '::router::remove_liquidity' 
+// Default investment amounts
+export const DEFAULT_AMOUNTS = [10, 50, 100, 500, 1000, 5000];
+
+// Chart colors
+export const CHART_COLORS = {
+  PRIMARY: '#3b82f6',
+  SECONDARY: '#10b981',
+  TERTIARY: '#8b5cf6',
+  WARNING: '#f59e0b',
+  DANGER: '#ef4444',
+  SAFE: '#34d399',
+  NEUTRAL: '#9ca3af'
+};
+
+// Protocol logos and metadata
+export const PROTOCOL_META = {
+  amnis: {
+    name: 'Amnis Finance',
+    logo: '/assets/protocols/amnis.png',
+    color: '#3b82f6',
+    category: PROTOCOL_CATEGORIES.STAKING,
+    website: 'https://amnis.finance'
   },
-  thala: { 
-    stake: '::staking::stake_apt', 
-    unstake: '::staking::unstake_apt', 
-    lend: '::lending::supply_apt', 
-    withdraw: '::lending::withdraw_apt', 
-    addLiquidity: '::router::add_liquidity', 
-    removeLiquidity: '::router::remove_liquidity' 
+  thala: {
+    name: 'Thala',
+    logo: '/assets/protocols/thala.png',
+    color: '#8b5cf6',
+    category: PROTOCOL_CATEGORIES.STAKING,
+    website: 'https://thala.fi'
   },
-  tortuga: { 
-    stake: '::staking::stake_apt', 
-    unstake: '::staking::unstake_apt' 
+  tortuga: {
+    name: 'Tortuga',
+    logo: '/assets/protocols/tortuga.png',
+    color: '#10b981',
+    category: PROTOCOL_CATEGORIES.STAKING,
+    website: 'https://tortuga.finance'
   },
-  echo: { 
-    lend: '::lending::supply', 
-    withdraw: '::lending::withdraw' 
+  ditto: {
+    name: 'Ditto',
+    logo: '/assets/protocols/ditto.png',
+    color: '#f59e0b',
+    category: PROTOCOL_CATEGORIES.STAKING,
+    website: 'https://ditto.money'
   },
-  ditto: { 
-    stake: '::staking::stake', 
-    unstake: '::staking::unstake' 
+  echo: {
+    name: 'Echo Finance',
+    logo: '/assets/protocols/echo.png',
+    color: '#ef4444',
+    category: PROTOCOL_CATEGORIES.LENDING,
+    website: 'https://echo.finance'
   },
-  aries: { 
-    lend: '::lending::supply', 
-    withdraw: '::lending::withdraw' 
+  aries: {
+    name: 'Aries Markets',
+    logo: '/assets/protocols/aries.png',
+    color: '#34d399',
+    category: PROTOCOL_CATEGORIES.LENDING,
+    website: 'https://aries.markets'
   },
-  cetus: { 
-    addLiquidity: '::pool::add_liquidity', 
-    removeLiquidity: '::pool::remove_liquidity' 
+  pancakeswap: {
+    name: 'PancakeSwap',
+    logo: '/assets/protocols/pancakeswap.png',
+    color: '#9ca3af',
+    category: PROTOCOL_CATEGORIES.DEX,
+    website: 'https://pancakeswap.finance'
   },
-  pancakeswap: { 
-    addLiquidity: '::router::add_liquidity', 
-    removeLiquidity: '::router::remove_liquidity', 
-    swap: '::router::swap_exact_input' 
-  },
-  liquidswap: { 
-    addLiquidity: '::router::add_liquidity', 
-    removeLiquidity: '::router::remove_liquidity' 
+  liquidswap: {
+    name: 'Liquidswap',
+    logo: '/assets/protocols/liquidswap.png',
+    color: '#4b5563',
+    category: PROTOCOL_CATEGORIES.DEX,
+    website: 'https://liquidswap.com'
   }
 };
 
-/**
- * Default auto-optimizer settings
- */
-export const DEFAULT_OPTIMIZER_SETTINGS = {
-  enabled: false,
-  interval: 24, // hours
-  rebalanceThreshold: 5, // percent
-  maxSlippage: 1, // percent
-  preserveStakedPositions: true,
-  maxOperationsPerRebalance: 6
+// Transaction types
+export const TRANSACTION_TYPES = {
+  STAKE: 'stake',
+  UNSTAKE: 'unstake',
+  LEND: 'lend',
+  WITHDRAW: 'withdraw',
+  ADD_LIQUIDITY: 'addLiquidity',
+  REMOVE_LIQUIDITY: 'removeLiquidity',
+  SWAP: 'swap',
+  TRANSFER: 'transfer',
+  OTHER: 'other'
 };
 
-/**
- * User preferences defaults
- */
-export const DEFAULT_USER_PREFERENCES = {
-  riskProfile: RISK_PROFILES.BALANCED,
-  theme: 'dark',
-  autoOptimize: false,
-  notificationsEnabled: true,
-  newsFrequency: 'daily',
-  dashboardLayout: 'default'
+// Time periods for charts
+export const TIME_PERIODS = {
+  DAY: '1d',
+  WEEK: '7d',
+  MONTH: '30d',
+  QUARTER: '90d',
+  YEAR: '365d'
+};
+
+// Auto-rebalance settings
+export const REBALANCE_SETTINGS = {
+  MIN_THRESHOLD: 5,
+  MAX_SLIPPAGE: 2,
+  DEFAULT_INTERVAL: 24 * 60 * 60 * 1000 // 24 hours
+};
+
+// Local storage keys
+export const STORAGE_KEYS = {
+  AUTH_TOKEN: 'compoundefi_auth_token',
+  USER_PREFERENCES: 'compoundefi_user_preferences',
+  WALLET_ADDRESS: 'compoundefi_wallet_address',
+  THEME: 'compoundefi_theme',
+  LAST_CONNECTION: 'compoundefi_last_connection'
+};
+
+// Animation durations
+export const ANIMATION_DURATION = {
+  SHORT: 200,
+  MEDIUM: 500,
+  LONG: 1000
+};
+
+// Notification types
+export const NOTIFICATION_TYPES = {
+  SUCCESS: 'success',
+  ERROR: 'error',
+  WARNING: 'warning',
+  INFO: 'info'
+};
+
+// Explorer URLs
+export const EXPLORER_URLS = {
+  MAINNET: 'https://explorer.aptoslabs.com',
+  TESTNET: 'https://explorer.aptoslabs.com/testnet'
+};
+
+// Asset types
+export const ASSET_TYPES = {
+  NATIVE: 'native',
+  STAKED: 'staked',
+  LP: 'liquidity',
+  TOKEN: 'token'
 };

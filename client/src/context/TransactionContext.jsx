@@ -1,520 +1,499 @@
-// src/context/TransactionContext.jsx
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { useWalletContext } from './WalletContext';
-import { useNotification } from './NotificationContext';
-import { executeBatchTransactions } from '../services/transactionService';
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import { useWallet } from '../hooks/useWallet';
+import { useNotification } from '../hooks/useNotification';
+import { PROTOCOL_ADDRESSES } from '../utils/constants';
 
-// Create context
+// Initial state for transaction context
+const initialState = {
+  pendingTransactions: [],
+  transactionHistory: [],
+  currentTransaction: null,
+  isExecuting: false,
+  executionStatus: null, // null, 'pending', 'success', 'failed'
+  error: null,
+  recentOperations: []
+};
+
+// Transaction action types
+const ACTIONS = {
+  SET_PENDING_TRANSACTIONS: 'SET_PENDING_TRANSACTIONS',
+  SET_TRANSACTION_HISTORY: 'SET_TRANSACTION_HISTORY',
+  START_TRANSACTION: 'START_TRANSACTION',
+  SET_EXECUTION_STATUS: 'SET_EXECUTION_STATUS',
+  TRANSACTION_SUCCESS: 'TRANSACTION_SUCCESS',
+  TRANSACTION_FAILED: 'TRANSACTION_FAILED',
+  RESET_TRANSACTION: 'RESET_TRANSACTION',
+  ADD_OPERATION: 'ADD_OPERATION',
+  CLEAR_OPERATIONS: 'CLEAR_OPERATIONS',
+  SET_ERROR: 'SET_ERROR',
+  CLEAR_ERROR: 'CLEAR_ERROR'
+};
+
+// Reducer function to handle transaction state updates
+function transactionReducer(state, action) {
+  switch (action.type) {
+    case ACTIONS.SET_PENDING_TRANSACTIONS:
+      return {
+        ...state,
+        pendingTransactions: action.payload
+      };
+    case ACTIONS.SET_TRANSACTION_HISTORY:
+      return {
+        ...state,
+        transactionHistory: action.payload
+      };
+    case ACTIONS.START_TRANSACTION:
+      return {
+        ...state,
+        currentTransaction: action.payload,
+        isExecuting: true,
+        executionStatus: 'pending',
+        error: null
+      };
+    case ACTIONS.SET_EXECUTION_STATUS:
+      return {
+        ...state,
+        executionStatus: action.payload
+      };
+    case ACTIONS.TRANSACTION_SUCCESS:
+      return {
+        ...state,
+        isExecuting: false,
+        executionStatus: 'success',
+        transactionHistory: [action.payload, ...state.transactionHistory],
+        pendingTransactions: state.pendingTransactions.filter(
+          tx => tx.id !== (action.payload.id || action.payload.txId)
+        )
+      };
+    case ACTIONS.TRANSACTION_FAILED:
+      return {
+        ...state,
+        isExecuting: false,
+        executionStatus: 'failed',
+        error: action.payload.error,
+        currentTransaction: {
+          ...state.currentTransaction,
+          error: action.payload.error
+        }
+      };
+    case ACTIONS.RESET_TRANSACTION:
+      return {
+        ...state,
+        currentTransaction: null,
+        isExecuting: false,
+        executionStatus: null,
+        error: null
+      };
+    case ACTIONS.ADD_OPERATION:
+      return {
+        ...state,
+        recentOperations: [...state.recentOperations, action.payload]
+      };
+    case ACTIONS.CLEAR_OPERATIONS:
+      return {
+        ...state,
+        recentOperations: []
+      };
+    case ACTIONS.SET_ERROR:
+      return {
+        ...state,
+        error: action.payload,
+        isExecuting: false
+      };
+    case ACTIONS.CLEAR_ERROR:
+      return {
+        ...state,
+        error: null
+      };
+    default:
+      return state;
+  }
+}
+
+// Create the transaction context
 const TransactionContext = createContext();
 
-export const TransactionProvider = ({ children }) => {
-  // Transaction state
-  const [pendingTransactions, setPendingTransactions] = useState([]);
-  const [executingTransaction, setExecutingTransaction] = useState(false);
-  const [transactionHistory, setTransactionHistory] = useState([]);
-  const [executionStatus, setExecutionStatus] = useState(null);
-  
-  // Get wallet and notification context
-  const { isConnected, executeTransaction } = useWalletContext();
+// Transaction context provider component
+export function TransactionProvider({ children }) {
+  const [state, dispatch] = useReducer(transactionReducer, initialState);
+  const { wallet, isConnected, signAndSubmitTransaction } = useWallet();
   const { showNotification } = useNotification();
-  
-  // Load transaction history from localStorage on mount
+
+  // Fetch pending transactions on wallet change
   useEffect(() => {
-    const storedHistory = localStorage.getItem('transactionHistory');
-    if (storedHistory) {
-      try {
-        setTransactionHistory(JSON.parse(storedHistory));
-      } catch (error) {
-        console.error('Failed to parse transaction history:', error);
+    if (isConnected && wallet?.address) {
+      fetchPendingTransactions(wallet.address);
+      fetchTransactionHistory(wallet.address);
+    }
+  }, [isConnected, wallet?.address]);
+
+  // Fetch pending transactions
+  const fetchPendingTransactions = useCallback(async (address) => {
+    try {
+      const response = await fetch(`/api/wallet/${address}/pending-transactions`);
+      const data = await response.json();
+      if (response.ok) {
+        dispatch({
+          type: ACTIONS.SET_PENDING_TRANSACTIONS,
+          payload: data.transactions || []
+        });
       }
+    } catch (error) {
+      console.error('Error fetching pending transactions:', error);
     }
   }, []);
-  
-  // Save transaction history to localStorage when it changes
-  useEffect(() => {
-    if (transactionHistory.length > 0) {
-      localStorage.setItem('transactionHistory', JSON.stringify(transactionHistory));
-    }
-  }, [transactionHistory]);
-  
-  // Add transaction to queue
-  const addTransaction = (transaction) => {
-    setPendingTransactions(prevTransactions => [...prevTransactions, transaction]);
-    return true;
-  };
-  
-  // Add multiple transactions to queue
-  const addTransactions = (transactions) => {
-    setPendingTransactions(prevTransactions => [...prevTransactions, ...transactions]);
-    return true;
-  };
-  
-  // Clear transaction queue
-  const clearTransactions = () => {
-    setPendingTransactions([]);
-    return true;
-  };
-  
-  // Execute all pending transactions
-  const executeTransactions = async () => {
-    if (!isConnected) {
-      showNotification('Wallet not connected', 'error');
-      return false;
-    }
-    
-    if (pendingTransactions.length === 0) {
-      showNotification('No transactions to execute', 'warning');
-      return false;
-    }
-    
-    if (executingTransaction) {
-      showNotification('Transaction execution in progress', 'warning');
-      return false;
-    }
-    
+
+  // Fetch transaction history
+  const fetchTransactionHistory = useCallback(async (address, limit = 20) => {
     try {
-      setExecutingTransaction(true);
-      setExecutionStatus({
-        status: 'executing',
-        message: 'Executing transactions...',
-        progress: 0
-      });
-      
-      // Execute transactions
-      const result = await executeTransactions(pendingTransactions);
-      
-      // Update transaction history
-      const historyEntry = {
-        id: Date.now().toString(),
-        transactions: result.transactions,
-        failedTransactions: result.failedTransactions,
-        timestamp: Date.now(),
-        success: result.success
-      };
-      
-      setTransactionHistory(prevHistory => [historyEntry, ...prevHistory]);
-      
-      // Show notification
-      if (result.success) {
-        showNotification('All transactions executed successfully', 'success');
-        setExecutionStatus({
-          status: 'success',
-          message: 'All transactions completed successfully',
-          progress: 100
-        });
-      } else if (result.transactions.length > 0) {
-        showNotification(`${result.transactions.length} transactions succeeded, ${result.failedTransactions.length} failed`, 'warning');
-        setExecutionStatus({
-          status: 'partial',
-          message: `${result.transactions.length} succeeded, ${result.failedTransactions.length} failed`,
-          progress: 100
-        });
-      } else {
-        showNotification('All transactions failed', 'error');
-        setExecutionStatus({
-          status: 'failed',
-          message: 'All transactions failed',
-          progress: 100
+      const response = await fetch(`/api/wallet/${address}/transactions?limit=${limit}`);
+      const data = await response.json();
+      if (response.ok) {
+        dispatch({
+          type: ACTIONS.SET_TRANSACTION_HISTORY,
+          payload: data.transactions || []
         });
       }
-      
-      // Clear pending transactions
-      setPendingTransactions([]);
-      
-      return result;
     } catch (error) {
-      console.error('Transaction execution error:', error);
-      showNotification(`Transaction execution failed: ${error.message}`, 'error');
-      setExecutionStatus({
-        status: 'failed',
-        message: `Execution failed: ${error.message}`,
-        progress: 100
-      });
-      return false;
-    } finally {
-      setExecutingTransaction(false);
+      console.error('Error fetching transaction history:', error);
     }
-  };
-  
-  // Execute a single transaction
-  const executeSingleTransaction = async (transaction) => {
-    if (!isConnected) {
-      showNotification('Wallet not connected', 'error');
-      return false;
+  }, []);
+
+  // Execute a strategy (multiple operations)
+  const executeStrategy = useCallback(async (strategy) => {
+    if (!isConnected || !wallet?.address) {
+      showNotification('Please connect your wallet to execute transactions', 'error');
+      return;
     }
-    
-    if (executingTransaction) {
-      showNotification('Transaction execution in progress', 'warning');
-      return false;
+
+    if (!strategy || !strategy.allocation || strategy.allocation.length === 0) {
+      showNotification('Invalid strategy. No allocation provided.', 'error');
+      return;
     }
-    
+
     try {
-      setExecutingTransaction(true);
-      setExecutionStatus({
-        status: 'executing',
-        message: 'Executing transaction...',
-        progress: 0
+      // Start transaction process
+      dispatch({
+        type: ACTIONS.START_TRANSACTION,
+        payload: {
+          type: 'strategy',
+          data: strategy,
+          timestamp: new Date().toISOString()
+        }
       });
-      
-      // Execute transaction
-      const result = await executeTransaction(transaction);
-      
-      // Update transaction history
-      const historyEntry = {
-        id: Date.now().toString(),
-        transactions: [{ ...transaction, result, status: 'success' }],
-        failedTransactions: [],
-        timestamp: Date.now(),
-        success: true
+
+      // Convert strategy to operations
+      const operations = strategy.allocation.map(item => ({
+        protocol: item.protocol,
+        type: determineOperationType(item.product),
+        amount: item.amount,
+        contractAddress: PROTOCOL_ADDRESSES[item.protocol.toLowerCase()] || getContractAddress(item.protocol),
+        functionName: getFunctionName(item.protocol, determineOperationType(item.product))
+      }));
+
+      // Prepare API request
+      const requestData = {
+        walletAddress: wallet.address,
+        amount: strategy.totalInvestment,
+        allocation: strategy.allocation,
+        operations
       };
-      
-      setTransactionHistory(prevHistory => [historyEntry, ...prevHistory]);
-      
-      // Show notification
-      showNotification('Transaction executed successfully', 'success');
-      setExecutionStatus({
-        status: 'success',
-        message: 'Transaction completed successfully',
-        progress: 100
+
+      // Simulate the transactions first
+      const simulateResponse = await fetch('/api/execute-strategy/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
       });
-      
-      return result;
-    } catch (error) {
-      console.error('Transaction execution error:', error);
-      
-      // Update transaction history with failed transaction
-      const historyEntry = {
-        id: Date.now().toString(),
-        transactions: [],
-        failedTransactions: [{ ...transaction, error: error.message, status: 'failed' }],
-        timestamp: Date.now(),
-        success: false
-      };
-      
-      setTransactionHistory(prevHistory => [historyEntry, ...prevHistory]);
-      
-      showNotification(`Transaction failed: ${error.message}`, 'error');
-      setExecutionStatus({
-        status: 'failed',
-        message: `Transaction failed: ${error.message}`,
-        progress: 100
-      });
-      return false;
-    } finally {
-      setExecutingTransaction(false);
-    }
-  };
-  
-  // Execute a recommendation strategy
-  const executeStrategy = async (recommendation) => {
-    if (!isConnected) {
-      showNotification('Wallet not connected', 'error');
-      return false;
-    }
-    
-    if (!recommendation || !recommendation.allocation) {
-      showNotification('Invalid recommendation', 'error');
-      return false;
-    }
-    
-    if (executingTransaction) {
-      showNotification('Transaction execution in progress', 'warning');
-      return false;
-    }
-    
-    try {
-      setExecutingTransaction(true);
-      setExecutionStatus({
-        status: 'executing',
-        message: 'Preparing strategy execution...',
-        progress: 0
-      });
-      
-      // Convert recommendation to transactions
-      const transactions = prepareTransactionsFromRecommendation(recommendation);
-      
-      if (transactions.length === 0) {
-        showNotification('No valid transactions in recommendation', 'error');
-        return false;
+
+      const simulationResult = await simulateResponse.json();
+
+      if (!simulationResult.success) {
+        throw new Error(simulationResult.error || 'Transaction simulation failed');
       }
-      
-      // Execute transactions
-      let currentProgress = 0;
-      const progressStep = 100 / transactions.length;
-      
-      const results = {
-        success: true,
-        transactions: [],
-        failedTransactions: []
-      };
-      
-      for (let i = 0; i < transactions.length; i++) {
-        const tx = transactions[i];
-        
-        setExecutionStatus({
-          status: 'executing',
-          message: `Executing transaction ${i + 1} of ${transactions.length}...`,
-          progress: currentProgress
-        });
-        
+
+      // Show confirmation to user
+      showNotification('Transaction simulation successful. Ready to execute.', 'info');
+
+      // Execute the operations
+      dispatch({ type: ACTIONS.SET_EXECUTION_STATUS, payload: 'executing' });
+
+      // Execute each operation in sequence
+      for (const operation of operations) {
         try {
-          const result = await executeTransaction(tx);
-          results.transactions.push({
-            ...tx,
-            result,
-            status: 'success'
-          });
-        } catch (error) {
-          console.error(`Transaction ${i + 1} failed:`, error);
-          results.success = false;
-          results.failedTransactions.push({
-            ...tx,
-            error: error.message,
-            status: 'failed'
+          // Create transaction payload
+          const payload = {
+            function: `${operation.contractAddress}${operation.functionName}`,
+            type_arguments: [],
+            arguments: [convertAmountToOnChain(operation.amount)]
+          };
+
+          // Sign and submit the transaction
+          const result = await signAndSubmitTransaction(payload);
+
+          if (result.success) {
+            dispatch({
+              type: ACTIONS.ADD_OPERATION,
+              payload: {
+                ...operation,
+                status: 'success',
+                txHash: result.hash,
+                timestamp: new Date().toISOString()
+              }
+            });
+            
+            showNotification(`Successfully executed ${operation.type} on ${operation.protocol}`, 'success');
+          } else {
+            throw new Error(result.error || 'Transaction failed');
+          }
+        } catch (opError) {
+          dispatch({
+            type: ACTIONS.ADD_OPERATION,
+            payload: {
+              ...operation,
+              status: 'failed',
+              error: opError.message,
+              timestamp: new Date().toISOString()
+            }
           });
           
-          // Show failure notification
-          showNotification(`Transaction ${i + 1} failed: ${error.message}`, 'error');
+          showNotification(`Failed to execute ${operation.type} on ${operation.protocol}: ${opError.message}`, 'error');
         }
+      }
+
+      // Update transaction status based on operations
+      const successfulOps = state.recentOperations.filter(op => op.status === 'success');
+      const allSuccessful = successfulOps.length === operations.length;
+
+      if (allSuccessful) {
+        dispatch({
+          type: ACTIONS.TRANSACTION_SUCCESS,
+          payload: {
+            type: 'strategy',
+            status: 'success',
+            operations: [...state.recentOperations],
+            timestamp: new Date().toISOString()
+          }
+        });
         
-        currentProgress += progressStep;
-        setExecutionStatus({
-          status: 'executing',
-          message: `Completed transaction ${i + 1} of ${transactions.length}`,
-          progress: currentProgress
+        showNotification('Strategy execution completed successfully!', 'success');
+      } else if (successfulOps.length > 0) {
+        dispatch({
+          type: ACTIONS.TRANSACTION_SUCCESS,
+          payload: {
+            type: 'strategy',
+            status: 'partial',
+            operations: [...state.recentOperations],
+            timestamp: new Date().toISOString()
+          }
         });
-      }
-      
-      // Update transaction history
-      const historyEntry = {
-        id: Date.now().toString(),
-        strategy: recommendation.title || 'AI Strategy',
-        transactions: results.transactions,
-        failedTransactions: results.failedTransactions,
-        timestamp: Date.now(),
-        success: results.success
-      };
-      
-      setTransactionHistory(prevHistory => [historyEntry, ...prevHistory]);
-      
-      // Show notification
-      if (results.success) {
-        showNotification('Strategy executed successfully', 'success');
-        setExecutionStatus({
-          status: 'success',
-          message: 'Strategy executed successfully',
-          progress: 100
-        });
-      } else if (results.transactions.length > 0) {
-        showNotification(`Strategy partially executed: ${results.transactions.length} succeeded, ${results.failedTransactions.length} failed`, 'warning');
-        setExecutionStatus({
-          status: 'partial',
-          message: `Strategy partially executed: ${results.transactions.length} succeeded, ${results.failedTransactions.length} failed`,
-          progress: 100
-        });
+        
+        showNotification('Strategy execution partially completed', 'warning');
       } else {
-        showNotification('Strategy execution failed', 'error');
-        setExecutionStatus({
-          status: 'failed',
-          message: 'Strategy execution failed',
-          progress: 100
-        });
+        throw new Error('All operations failed');
       }
-      
-      return results;
-    } catch (error) {
-      console.error('Strategy execution error:', error);
-      showNotification(`Strategy execution failed: ${error.message}`, 'error');
-      setExecutionStatus({
-        status: 'failed',
-        message: `Strategy execution failed: ${error.message}`,
-        progress: 100
-      });
-      return false;
-    } finally {
-      setExecutingTransaction(false);
-    }
-  };
-  
-  // Convert recommendation to transactions
-  const prepareTransactionsFromRecommendation = (recommendation) => {
-    if (!recommendation?.allocation) {
-      return [];
-    }
-    
-    // Get contract addresses from constants or environment
-    const contractAddresses = {
-      amnis: "0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a",
-      thala: "0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6",
-      tortuga: "0x952c1b1fc8eb75ee80f432c9d0a84fcda1d5c7481501a7eca9199f1596a60b53",
-      ditto: "0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5",
-      aries: "0x9770fa9c725cbd97eb50b2be5f7416efdfd1f1554beb0750d4dae4c64e860da3",
-      pancakeswap: "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa",
-      cetus: "0x27156bd56eb5637b9adde4d915b596f92d2f28f0ade2eaef48fa73e360e4e8a6"
-    };
-    
-    // Map recommendation allocations to operations
-    const operations = recommendation.allocation.map(item => {
-      // Determine operation type based on product name
-      const type = determineOperationType(item.product || item.protocol);
-      
-      // Get contract address (normalize protocol name to lowercase)
-      const protocolLower = item.protocol.toLowerCase();
-      const contractAddress = contractAddresses[protocolLower] || null;
-      
-      // Skip if no contract address found
-      if (!contractAddress) {
-        console.warn(`No contract address found for protocol: ${item.protocol}`);
-        return null;
-      }
-      
-      // Calculate amount if not explicitly provided
-      const amount = item.amount || 
-        ((parseFloat(recommendation.totalInvestment || 100) * parseFloat(item.percentage || 0) / 100).toFixed(2));
-      
-      // Skip if amount is invalid
-      if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-        console.warn(`Invalid amount for ${item.protocol}: ${amount}`);
-        return null;
-      }
+
+      // Refresh transaction data
+      fetchPendingTransactions(wallet.address);
+      fetchTransactionHistory(wallet.address);
       
       return {
-        protocol: item.protocol,
-        type,
-        amount,
-        contractAddress,
-        functionName: determineFunctionName(item.protocol, type),
-        expectedApr: parseFloat(item.expectedApr || 0)
+        success: allSuccessful || successfulOps.length > 0,
+        operations: state.recentOperations
       };
-    }).filter(Boolean); // Remove null items
-    
-    // Convert operations to transaction payloads
-    return operations.map(operation => {
-      const amountInOctas = Math.floor(parseFloat(operation.amount) * 100000000).toString();
+    } catch (error) {
+      dispatch({
+        type: ACTIONS.TRANSACTION_FAILED,
+        payload: { error: error.message }
+      });
       
-      return {
+      showNotification(`Strategy execution failed: ${error.message}`, 'error');
+      return { success: false, error: error.message };
+    } finally {
+      setTimeout(() => {
+        dispatch({ type: ACTIONS.CLEAR_OPERATIONS });
+      }, 5000);
+    }
+  }, [isConnected, wallet, showNotification, state.recentOperations]);
+
+  // Execute a single operation
+  const executeOperation = useCallback(async (operation) => {
+    if (!isConnected || !wallet?.address) {
+      showNotification('Please connect your wallet to execute transactions', 'error');
+      return { success: false, error: 'Wallet not connected' };
+    }
+
+    try {
+      // Start transaction process
+      dispatch({
+        type: ACTIONS.START_TRANSACTION,
+        payload: {
+          type: 'operation',
+          data: operation,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      // Create transaction payload
+      const payload = {
         function: `${operation.contractAddress}${operation.functionName}`,
         type_arguments: [],
-        arguments: [amountInOctas],
-        metadata: {
-          protocol: operation.protocol,
-          type: operation.type,
-          amount: operation.amount,
-          expectedApr: operation.expectedApr
-        }
+        arguments: [convertAmountToOnChain(operation.amount)]
       };
-    });
-  };
-  
-  /**
-   * Determines the operation type based on product name
-   */
-  const determineOperationType = (product) => {
+
+      // Sign and submit transaction
+      const result = await signAndSubmitTransaction(payload);
+
+      if (result.success) {
+        dispatch({
+          type: ACTIONS.TRANSACTION_SUCCESS,
+          payload: {
+            ...operation,
+            status: 'success',
+            txHash: result.hash,
+            timestamp: new Date().toISOString()
+          }
+        });
+        
+        showNotification(`Successfully executed ${operation.type} on ${operation.protocol}`, 'success');
+        return { success: true, hash: result.hash };
+      } else {
+        throw new Error(result.error || 'Transaction failed');
+      }
+    } catch (error) {
+      dispatch({
+        type: ACTIONS.TRANSACTION_FAILED,
+        payload: { error: error.message }
+      });
+      
+      showNotification(`Transaction failed: ${error.message}`, 'error');
+      return { success: false, error: error.message };
+    }
+  }, [isConnected, wallet, showNotification]);
+
+  // Reset current transaction state
+  const resetTransaction = useCallback(() => {
+    dispatch({ type: ACTIONS.RESET_TRANSACTION });
+  }, []);
+
+  // Helper function to determine operation type
+  function determineOperationType(product) {
     if (!product) return 'stake';
     
-    const lower = typeof product === 'string' ? product.toLowerCase() : '';
+    const lowerProduct = product.toLowerCase();
     
-    if (lower.includes('stake') || lower.includes('apt')) {
+    if (lowerProduct.includes('stake') || lowerProduct.includes('stapt') || lowerProduct.includes('apt') && lowerProduct.includes('st')) {
       return 'stake';
     }
-    if (lower.includes('lend') || lower.includes('supply')) {
+    if (lowerProduct.includes('lend') || lowerProduct.includes('supply') || lowerProduct.includes('deposit')) {
       return 'lend';
     }
-    if (lower.includes('liquidity') || lower.includes('pool')) {
+    if (lowerProduct.includes('liquidity') || lowerProduct.includes('pool') || lowerProduct.includes('swap')) {
       return 'addLiquidity';
     }
-    if (lower.includes('vault') || lower.includes('yield')) {
+    if (lowerProduct.includes('yield') || lowerProduct.includes('farm') || lowerProduct.includes('vault')) {
       return 'deposit';
     }
     
     return 'stake'; // Default to staking
-  };
-  
-  /**
-   * Determines the appropriate function name based on protocol and operation type
-   */
-  const determineFunctionName = (protocol, operationType) => {
+  }
+
+  // Helper function to get contract address
+  function getContractAddress(protocol) {
+    return PROTOCOL_ADDRESSES[protocol.toLowerCase()] || null;
+  }
+
+  // Helper function to get function name
+  function getFunctionName(protocol, operation) {
     const functionMappings = {
       'amnis': { 
         'stake': '::staking::stake', 
-        'unstake': '::staking::unstake'
+        'unstake': '::staking::unstake', 
+        'lend': '::lending::supply', 
+        'withdraw': '::lending::withdraw', 
+        'addLiquidity': '::router::add_liquidity', 
+        'removeLiquidity': '::router::remove_liquidity',
+        'swap': '::router::swap_exact_input'
       },
       'thala': { 
         'stake': '::staking::stake_apt', 
-        'unstake': '::staking::unstake_apt'
+        'unstake': '::staking::unstake_apt', 
+        'lend': '::lending::supply_apt', 
+        'withdraw': '::lending::withdraw_apt', 
+        'addLiquidity': '::router::add_liquidity', 
+        'removeLiquidity': '::router::remove_liquidity',
+        'swap': '::router::swap_exact_input'
       },
       'tortuga': { 
         'stake': '::staking::stake_apt', 
-        'unstake': '::staking::unstake_apt'
+        'unstake': '::staking::unstake_apt' 
+      },
+      'echo': { 
+        'lend': '::lending::supply',
+        'withdraw': '::lending::withdraw' 
       },
       'ditto': { 
         'stake': '::staking::stake', 
-        'unstake': '::staking::unstake'
+        'unstake': '::staking::unstake' 
       },
       'aries': { 
         'lend': '::lending::supply', 
-        'withdraw': '::lending::withdraw'
-      },
-      'cetus': { 
-        'addLiquidity': '::pool::add_liquidity', 
-        'removeLiquidity': '::pool::remove_liquidity'
-      },
-      'pancakeswap': { 
-        'addLiquidity': '::router::add_liquidity', 
-        'removeLiquidity': '::router::remove_liquidity'
+        'withdraw': '::lending::withdraw' 
       }
     };
-
-    const protocolLower = protocol.toLowerCase();
-    const operationLower = operationType.toLowerCase();
-
-    // If we have a specific mapping for this protocol and operation type, use it
-    if (functionMappings[protocolLower]?.[operationLower]) {
-      return functionMappings[protocolLower][operationLower];
+    
+    const lowerProtocol = protocol.toLowerCase();
+    const lowerOperation = operation.toLowerCase();
+    
+    // Check for specific protocol-operation mapping
+    if (functionMappings[lowerProtocol]?.[lowerOperation]) {
+      return functionMappings[lowerProtocol][lowerOperation];
     }
+    
+    // Default function names by operation type
+    const defaultFunctions = {
+      'stake': '::staking::stake',
+      'unstake': '::staking::unstake',
+      'lend': '::lending::supply',
+      'withdraw': '::lending::withdraw',
+      'addLiquidity': '::router::add_liquidity',
+      'removeLiquidity': '::router::remove_liquidity',
+      'deposit': '::yield::deposit',
+      'swap': '::router::swap_exact_input'
+    };
+    
+    return defaultFunctions[lowerOperation] || `::${lowerOperation}::execute`;
+  }
 
-    // Otherwise use general mappings
-    switch (operationLower) {
-      case 'stake': return '::staking::stake';
-      case 'unstake': return '::staking::unstake';
-      case 'lend': return '::lending::supply';
-      case 'withdraw': return '::lending::withdraw';
-      case 'addliquidity': return '::router::add_liquidity';
-      case 'removeliquidity': return '::router::remove_liquidity';
-      case 'deposit': return '::yield::deposit';
-      default: return `::${operationLower}::execute`;
-    }
-  };
-  
-  // Provider value
+  // Helper function to convert amount to on-chain format (APT has 8 decimals)
+  function convertAmountToOnChain(amount) {
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum)) return '0';
+    return (amountNum * 100000000).toFixed(0); // 8 decimals for APT
+  }
+
+  // Context value
   const value = {
-    pendingTransactions,
-    executingTransaction,
-    transactionHistory,
-    executionStatus,
-    addTransaction,
-    addTransactions,
-    clearTransactions,
-    executeTransactions,
-    executeSingleTransaction,
-    executeStrategy
+    ...state,
+    executeStrategy,
+    executeOperation,
+    resetTransaction,
+    fetchPendingTransactions,
+    fetchTransactionHistory
   };
-  
+
   return (
     <TransactionContext.Provider value={value}>
       {children}
     </TransactionContext.Provider>
   );
-};
+}
 
-// Custom hook for using transaction context
-export const useTransactionContext = () => {
+// Custom hook to use the transaction context
+export function useTransaction() {
   const context = useContext(TransactionContext);
-  if (!context) {
-    throw new Error('useTransactionContext must be used within a TransactionProvider');
+  if (context === undefined) {
+    throw new Error('useTransaction must be used within a TransactionProvider');
   }
   return context;
-};
-
-// Add this export at the end of the file:
-export { TransactionContext };
+}

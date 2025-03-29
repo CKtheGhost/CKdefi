@@ -1,51 +1,21 @@
 import React from 'react';
 
-/**
- * LoadingScreen component for displaying a full-screen loading animation
- * @param {Object} props - Component props
- * @param {string} props.message - Optional loading message
- * @param {boolean} props.transparent - Whether the background should be transparent
- */
-const LoadingScreen = ({ 
-  message = 'Loading...', 
-  transparent = false,
-  showLogo = true
-}) => {
+const LoadingScreen = ({ message = "Loading..." }) => {
   return (
-    <div className={`fixed inset-0 flex flex-col items-center justify-center z-50 ${transparent ? 'bg-black bg-opacity-50' : 'bg-gray-900'}`}>
-      <div className="text-center">
-        {showLogo && (
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 relative">
-              {/* CompounDefi Logo Animation */}
-              <div className="matrix-loader">
-                <div className="matrix-dots">
-                  {[...Array(25)].map((_, i) => (
-                    <div 
-                      key={i} 
-                      className="matrix-dot"
-                      style={{
-                        animationDelay: `${Math.random() * 2}s`,
-                        backgroundColor: `rgba(0, ${128 + Math.floor(Math.random() * 128)}, ${128 + Math.floor(Math.random() * 128)}, ${0.5 + Math.random() * 0.5})`
-                      }}
-                    ></div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-white dark:bg-slate-900 bg-opacity-90 dark:bg-opacity-90 z-50">
+      <div className="flex flex-col items-center">
+        <div className="relative">
+          <div className="h-16 w-16 rounded-full border-t-4 border-b-4 border-blue-500 animate-spin"></div>
+          <div className="absolute top-0 left-0 h-16 w-16 rounded-full border-t-4 border-b-4 border-indigo-600 animate-spin animation-delay-500"></div>
+        </div>
         
-        <h2 className="text-xl font-bold text-blue-400 mb-2">CompounDefi</h2>
-        
-        <p className="text-gray-400">{message}</p>
-        
-        <div className="mt-4">
-          <div className="loader-dots flex space-x-2 justify-center">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-          </div>
+        <div className="mt-6 text-center">
+          <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200">
+            {message}
+          </h3>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            This may take a moment as we analyze market conditions.
+          </p>
         </div>
       </div>
     </div>

@@ -1,101 +1,94 @@
-// src/components/wallet/LiquidityPositions.jsx
-
 import React from 'react';
-import { formatNumber } from '../../utils/formatters';
+import { usePortfolio } from '../../hooks/usePortfolio';
 
-const LiquidityPositions = ({ portfolioData }) => {
-  const ammLiquidity = portfolioData?.ammLiquidity || { hasLiquidity: false, positions: [] };
-  const hasLiquidity = ammLiquidity.hasLiquidity;
-  const positions = ammLiquidity.positions || [];
-  
+const LiquidityPositions = ({ className = "" }) => {
+  const { portfolio, isLoading } = usePortfolio();
+
+  if (isLoading) {
+    return (
+      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow p-4 ${className}`}>
+        <h3 className="font-semibold text-lg mb-4">Liquidity Positions</h3>
+        <div className="animate-pulse">
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6 mb-2"></div>
+        </div>
+      </div>
+    );
+  }
+
+  const hasLiquidity = portfolio?.ammLiquidity?.hasLiquidity;
+  const positions = portfolio?.ammLiquidity?.positions || [];
+  const totalValue = parseFloat(portfolio?.ammLiquidity?.estimatedValueUSD || 0);
+
   return (
-    <div className="bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Liquidity Positions</h3>
-      
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow p-4 ${className}`}>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-semibold text-lg">Liquidity Positions</h3>
+        {hasLiquidity && (
+          <span className="text-blue-500 font-medium">${totalValue.toFixed(2)}</span>
+        )}
+      </div>
+
       {!hasLiquidity ? (
-        <div className="bg-gray-700 rounded-lg p-6 text-center">
-          <p className="text-gray-400">No active liquidity positions found</p>
-          <button className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
-            Explore AMM Options
-          </button>
+        <div className="text-center py-6">
+          <p className="text-gray-500 dark:text-gray-400">No liquidity positions found</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Add liquidity to AMMs to earn trading fees</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-700">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 bg-gray-700 text-left text-xs font-medium text-gray-300 uppercase tracking-wider rounded-tl-lg">
-                  Protocol
-                </th>
-                <th className="px-6 py-3 bg-gray-700 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                  Pool
-                </th>
-                <th className="px-6 py-3 bg-gray-700 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                  Value
-                </th>
-                <th className="px-6 py-3 bg-gray-700 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                  APR
-                </th>
-                <th className="px-6 py-3 bg-gray-700 text-left text-xs font-medium text-gray-300 uppercase tracking-wider rounded-tr-lg">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-gray-700 divide-y divide-gray-600 rounded-b-lg">
-              {positions.length > 0 ? (
-                positions.map((position, index) => (
+        <div className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Protocol
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Pool
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Value
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {positions.map((position, index) => (
                   <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center mr-3">
-                          <img 
-                            src={`/assets/images/protocols/${position.protocol}.png`} 
-                            alt={position.protocol} 
-                            className="w-6 h-6"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.parentNode.innerHTML = position.protocol.substring(0, 1).toUpperCase();
-                            }}
-                          />
-                        </div>
-                        <div className="text-sm font-medium text-white capitalize">
-                          {position.protocol}
-                        </div>
-                      </div>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {position.protocol.charAt(0).toUpperCase() + position.protocol.slice(1)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-white">
-                        {position.details?.tokenPair || position.type || 'LP Token'}
-                      </div>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-400">
+                      {position.poolType || position.pairName || 'LP Token'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-white">${formatNumber(position.valueUSD)}</div>
-                      <div className="text-xs text-gray-400">{position.valueInApt} APT</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-green-400">~9.5%</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button className="text-blue-400 hover:text-blue-300 mr-3">
-                        Add
-                      </button>
-                      <button className="text-red-400 hover:text-red-300">
-                        Remove
-                      </button>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-400">
+                      ${parseFloat(position.valueUSD).toFixed(2)}
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="5" className="px-6 py-4 text-center text-gray-400">
-                    {hasLiquidity ? 
-                      `Total Liquidity: $${formatNumber(ammLiquidity.estimatedValueUSD)}` : 
-                      'No detailed liquidity positions data available'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                ))}
+                {positions.length === 0 && (
+                  <tr>
+                    <td colSpan="3" className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                      Liquidity detected, but details unavailable
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600 dark:text-gray-400">Estimated APR:</span>
+              <span className="font-medium text-green-600 dark:text-green-400">
+                {portfolio?.ammLiquidity?.apr ? `${portfolio.ammLiquidity.apr.toFixed(2)}%` : 'Varies by pool'}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm mt-1">
+              <span className="text-gray-600 dark:text-gray-400">Total Value:</span>
+              <span className="font-medium">${totalValue.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

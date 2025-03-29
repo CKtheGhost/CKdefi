@@ -1,318 +1,485 @@
-// src/utils/analyticsUtils.js
-// Analytics utility functions for tracking user actions and application performance
-
-// Mock implementation for analytics tracking
-// In production, this would be replaced with a real analytics provider like Google Analytics, Mixpanel, etc.
-const analyticsEndpoint = process.env.REACT_APP_ANALYTICS_ENDPOINT || '/api/analytics';
-const analyticsEnabled = process.env.REACT_APP_ANALYTICS_ENABLED !== 'false';
-const debugMode = process.env.NODE_ENV === 'development';
+/// src/utils/analyticsUtils.js
+// Analytics tracking utilities for CompounDefi frontend
 
 /**
- * Initialize analytics
+ * Analytics utilities for tracking user behavior and performance metrics
+ * Compatible with multiple analytics providers (Google Analytics, Mixpanel, custom backend)
+ */
+
+// Configuration
+const ANALYTICS_ENABLED = process.env.REACT_APP_ANALYTICS_ENABLED === 'true';
+const ANALYTICS_DEBUG = process.env.NODE_ENV === 'development';
+const ANALYTICS_ENDPOINT = process.env.REACT_APP_ANALYTICS_ENDPOINT || '/api/analytics';
+
+// Event categories
+export const EVENT_CATEGORIES = {
+  PORTFOLIO: 'portfolio',
+  RECOMMENDATION: 'recommendation',
+  TRANSACTION: 'transaction',
+  REBALANCE: 'rebalance',
+  USER: 'user',
+  WALLET: 'wallet',
+  SOCIAL: 'social',
+  UI: 'ui'
+};
+
+// Initialize analytics trackers
+let analyticsInitialized = false;
+let anonymousId = null;
+
+/**
+ * Initialize analytics with user info
  * @param {Object} options - Configuration options
  */
-export const initAnalytics = (options = {}) => {
-  if (!analyticsEnabled) return;
-  
-  const { userId, walletAddress, referrer } = options;
+export const initializeAnalytics = (options = {}) => {
+  if (!ANALYTICS_ENABLED) return;
   
   try {
-    // Log initialization
-    if (debugMode) {
-      console.log('Analytics initialized:', { userId, walletAddress, referrer });
+    // Generate or retrieve anonymous ID
+    anonymousId = localStorage.getItem('analyticsId') || generateRandomId();
+    localStorage.setItem('analyticsId', anonymousId);
+    
+    // Initialize tracking services if present in window
+    if (window.gtag) {
+      window.gtag('config', process.env.REACT_APP_GA_MEASUREMENT_ID, {
+        send_page_view: false // We'll track page views manually
+      });
     }
     
-    // Send initialization event
-    sendAnalyticsEvent('init', {
-      timestamp: Date.now(),
-      userId,
-      walletAddress,
-      referrer: referrer || document.referrer,
+    if (window.mixpanel) {
+      window.mixpanel.init(process.env.REACT_APP_MIXPANEL_TOKEN, {
+        debug: ANALYTICS_DEBUG
+      });
+    }
+    
+    // Set user identity if available
+    if (options.walletAddress) {
+      identifyUser(options.walletAddress);
+    }
+    
+    analyticsInitialized = true;
+    log('Analytics initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize analytics:', error);
+  }
+};
+
+/**
+ * Track page view event
+ * @param {string} pageName - Name of the page 
+ * @param {Object} properties - Additional properties
+ */
+export const trackPageView = (pageName, properties = {}) => {
+  if (!ensureInitialized()) return;
+  
+  try {
+    // Google Analytics
+    if (window.gtag) {
+      window.gtag('event', 'page_view', {
+        page_title: pageName,
+        page_location: window.location.href,
+        page_path: window.location.pathname,
+        ...properties
+      });
+    }
+    
+    // Mixpanel
+    if (window.mixpanel) {
+      window.mixpanel.track('Page Viewed', {
+        page: pageName,
+        url: window.location.href,
+        ...properties
+      });
+    }
+    
+    // Send to backend
+    sendToBackend('pageview', {
+      page: pageName,
       url: window.location.href,
-      userAgent: navigator.userAgent,
-      screenSize: `${window.innerWidth}x${window.innerHeight}`
+      ...properties
     });
     
-    // Set up page view tracking
-    trackPageViews();
+    log(`Page view: ${pageName}`);
   } catch (error) {
-    console.error('Analytics initialization error:', error);
+    console.error('Error tracking page view:', error);
   }
 };
 
 /**
- * Track wallet connection/disconnection events
- * @param {string} address - Wallet address
- * @param {string} provider - Wallet provider name
- * @param {boolean} success - Whether operation was successful
- * @param {string} error - Error message if failed
+ * Track custom event
+ * @param {string} eventName - Name of the event
+ * @param {string} category - Event category
+ * @param {Object} properties - Additional properties
  */
-export const trackWalletConnection = (address, provider, success, error = null) => {
-  if (!analyticsEnabled) return;
+export const trackEvent = (eventName, category, properties = {}) => {
+  if (!ensureInitialized()) return;
   
-  const eventName = success ? 'wallet_connected' : 'wallet_connection_failed';
-  
-  const eventData = {
-    timestamp: Date.now(),
-    address: address ? maskAddress(address) : null,
-    provider,
-    success
-  };
-  
-  if (error) {
-    eventData.error = error;
-  }
-  
-  sendAnalyticsEvent(eventName, eventData);
-};
-
-/**
- * Track a blockchain transaction
- * @param {string} type - Transaction type
- * @param {string} protocol - Protocol name
- * @param {string|number} amount - Transaction amount
- * @param {boolean} success - Whether transaction was successful
- * @param {string} error - Error message if failed
- */
-export const trackTransaction = (type, protocol, amount, success, error = null) => {
-  if (!analyticsEnabled) return;
-  
-  const eventName = success ? 'transaction_success' : 'transaction_failed';
-  
-  const eventData = {
-    timestamp: Date.now(),
-    type,
-    protocol,
-    amount: parseFloat(amount),
-    success
-  };
-  
-  if (error) {
-    eventData.error = error;
-  }
-  
-  sendAnalyticsEvent(eventName, eventData);
-};
-
-/**
- * Track AI recommendation generation
- * @param {string} riskProfile - User risk profile
- * @param {string|number} amount - Investment amount
- * @param {boolean} success - Whether generation was successful
- * @param {string} error - Error message if failed
- */
-export const trackRecommendation = (riskProfile, amount, success, error = null) => {
-  if (!analyticsEnabled) return;
-  
-  const eventName = success ? 'recommendation_generated' : 'recommendation_failed';
-  
-  const eventData = {
-    timestamp: Date.now(),
-    riskProfile,
-    amount: parseFloat(amount),
-    success
-  };
-  
-  if (error) {
-    eventData.error = error;
-  }
-  
-  sendAnalyticsEvent(eventName, eventData);
-};
-
-/**
- * Track auto-optimizer events
- * @param {string} action - Action (enable, disable, rebalance)
- * @param {Object} settings - Optimizer settings
- * @param {boolean} success - Whether action was successful
- */
-export const trackOptimizer = (action, settings, success = true) => {
-  if (!analyticsEnabled) return;
-  
-  const eventName = `optimizer_${action}`;
-  
-  const eventData = {
-    timestamp: Date.now(),
-    action,
-    settings,
-    success
-  };
-  
-  sendAnalyticsEvent(eventName, eventData);
-};
-
-/**
- * Track user engagement with specific features
- * @param {string} feature - Feature name
- * @param {string} action - Action taken
- * @param {Object} metadata - Additional metadata
- */
-export const trackEngagement = (feature, action, metadata = {}) => {
-  if (!analyticsEnabled) return;
-  
-  const eventName = 'feature_engagement';
-  
-  const eventData = {
-    timestamp: Date.now(),
-    feature,
-    action,
-    ...metadata
-  };
-  
-  sendAnalyticsEvent(eventName, eventData);
-};
-
-/**
- * Track page views
- */
-export const trackPageViews = () => {
-  if (!analyticsEnabled) return;
-  
-  // Track initial page view
-  const currentPage = window.location.pathname;
-  trackPageView(currentPage);
-  
-  // Set up history change listener for SPAs
-  const originalPushState = window.history.pushState;
-  window.history.pushState = function() {
-    originalPushState.apply(this, arguments);
-    trackPageView(window.location.pathname);
-  };
-  
-  // Handle back/forward navigation
-  window.addEventListener('popstate', () => {
-    trackPageView(window.location.pathname);
-  });
-};
-
-/**
- * Track individual page view
- * @param {string} path - Page path
- */
-export const trackPageView = (path) => {
-  if (!analyticsEnabled) return;
-  
-  const eventData = {
-    timestamp: Date.now(),
-    path,
-    title: document.title,
-    referrer: document.referrer
-  };
-  
-  sendAnalyticsEvent('page_view', eventData);
-};
-
-/**
- * Track application performance metrics
- * @param {string} metric - Metric name
- * @param {number} value - Metric value
- * @param {Object} metadata - Additional metadata
- */
-export const trackPerformance = (metric, value, metadata = {}) => {
-  if (!analyticsEnabled) return;
-  
-  const eventData = {
-    timestamp: Date.now(),
-    metric,
-    value,
-    ...metadata
-  };
-  
-  sendAnalyticsEvent('performance', eventData);
-};
-
-/**
- * Track errors
- * @param {string} context - Error context
- * @param {string} message - Error message
- * @param {Object} metadata - Additional metadata
- */
-export const trackError = (context, message, metadata = {}) => {
-  if (!analyticsEnabled) return;
-  
-  const eventData = {
-    timestamp: Date.now(),
-    context,
-    message,
-    url: window.location.href,
-    ...metadata
-  };
-  
-  sendAnalyticsEvent('error', eventData);
-};
-
-/**
- * Send analytics event to server
- * @param {string} eventName - Event name
- * @param {Object} eventData - Event data
- */
-const sendAnalyticsEvent = async (eventName, eventData) => {
   try {
-    if (debugMode) {
-      console.log(`Analytics event: ${eventName}`, eventData);
+    // Google Analytics
+    if (window.gtag) {
+      window.gtag('event', eventName, {
+        event_category: category,
+        ...properties
+      });
     }
     
-    if (!analyticsEnabled) return;
-    
-    // For development or when endpoint is not available, just log
-    if (process.env.NODE_ENV === 'development' || !analyticsEndpoint) {
-      return;
+    // Mixpanel
+    if (window.mixpanel) {
+      window.mixpanel.track(eventName, {
+        category,
+        ...properties
+      });
     }
     
-    // Use Beacon API if available for non-blocking analytics
-    if (navigator.sendBeacon) {
-      const blob = new Blob(
-        [JSON.stringify({ event: eventName, data: eventData })], 
-        { type: 'application/json' }
-      );
-      navigator.sendBeacon(analyticsEndpoint, blob);
-      return;
+    // Send to backend
+    sendToBackend('event', {
+      name: eventName,
+      category,
+      ...properties
+    });
+    
+    log(`Event: ${eventName} (${category})`, properties);
+  } catch (error) {
+    console.error('Error tracking event:', error);
+  }
+};
+
+/**
+ * Track portfolio interaction events
+ * @param {string} action - Action performed
+ * @param {Object} details - Action details
+ */
+export const trackPortfolioAction = (action, details = {}) => {
+  trackEvent(`portfolio_${action}`, EVENT_CATEGORIES.PORTFOLIO, details);
+};
+
+/**
+ * Track recommendation interaction events
+ * @param {string} action - Action performed
+ * @param {Object} details - Action details
+ */
+export const trackRecommendationAction = (action, details = {}) => {
+  trackEvent(`recommendation_${action}`, EVENT_CATEGORIES.RECOMMENDATION, details);
+};
+
+/**
+ * Track transaction events
+ * @param {string} action - Transaction action
+ * @param {Object} details - Transaction details
+ */
+export const trackTransaction = (action, details = {}) => {
+  trackEvent(`transaction_${action}`, EVENT_CATEGORIES.TRANSACTION, details);
+};
+
+/**
+ * Track rebalancing events
+ * @param {string} action - Rebalance action
+ * @param {Object} details - Rebalance details
+ */
+export const trackRebalance = (action, details = {}) => {
+  trackEvent(`rebalance_${action}`, EVENT_CATEGORIES.REBALANCE, details);
+};
+
+/**
+ * Track user actions
+ * @param {string} action - User action
+ * @param {Object} details - Action details
+ */
+export const trackUserAction = (action, details = {}) => {
+  trackEvent(`user_${action}`, EVENT_CATEGORIES.USER, details);
+};
+
+/**
+ * Track wallet interactions
+ * @param {string} action - Wallet action
+ * @param {Object} details - Action details
+ */
+export const trackWalletAction = (action, details = {}) => {
+  trackEvent(`wallet_${action}`, EVENT_CATEGORIES.WALLET, details);
+};
+
+/**
+ * Track social media interactions
+ * @param {string} action - Social action
+ * @param {Object} details - Action details
+ */
+export const trackSocialAction = (action, details = {}) => {
+  trackEvent(`social_${action}`, EVENT_CATEGORIES.SOCIAL, details);
+};
+
+/**
+ * Track UI interactions
+ * @param {string} element - UI element
+ * @param {string} action - Action performed
+ * @param {Object} details - Additional details
+ */
+export const trackUIInteraction = (element, action, details = {}) => {
+  trackEvent(`ui_${element}_${action}`, EVENT_CATEGORIES.UI, details);
+};
+
+/**
+ * Track timing events (performance metrics)
+ * @param {string} category - Timing category
+ * @param {string} variable - What is being timed
+ * @param {number} time - Time in milliseconds
+ * @param {Object} properties - Additional properties
+ */
+export const trackTiming = (category, variable, time, properties = {}) => {
+  if (!ensureInitialized()) return;
+  
+  try {
+    // Google Analytics
+    if (window.gtag) {
+      window.gtag('event', 'timing_complete', {
+        name: variable,
+        value: time,
+        event_category: category,
+        ...properties
+      });
     }
     
-    // Fallback to fetch API
-    fetch(analyticsEndpoint, {
+    // Mixpanel
+    if (window.mixpanel) {
+      window.mixpanel.track('Timing', {
+        category,
+        variable,
+        time,
+        ...properties
+      });
+    }
+    
+    // Send to backend
+    sendToBackend('timing', {
+      category,
+      variable,
+      time,
+      ...properties
+    });
+    
+    log(`Timing: ${category} - ${variable} = ${time}ms`);
+  } catch (error) {
+    console.error('Error tracking timing:', error);
+  }
+};
+
+/**
+ * Identify user for analytics
+ * @param {string} walletAddress - User's wallet address
+ * @param {Object} traits - Additional user traits
+ */
+export const identifyUser = (walletAddress, traits = {}) => {
+  if (!ANALYTICS_ENABLED) return;
+  
+  try {
+    // Create anonymized ID from wallet address
+    const userId = walletAddress ? 
+      `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}` : 
+      anonymousId;
+    
+    // Set user ID in Google Analytics
+    if (window.gtag) {
+      window.gtag('set', 'user_properties', {
+        user_id: userId,
+        wallet_address_masked: userId,
+        ...traits
+      });
+    }
+    
+    // Set user ID in Mixpanel
+    if (window.mixpanel) {
+      window.mixpanel.identify(userId);
+      if (Object.keys(traits).length > 0) {
+        window.mixpanel.people.set({
+          wallet_address_masked: userId,
+          ...traits
+        });
+      }
+    }
+    
+    // Send to backend
+    sendToBackend('identify', {
+      userId,
+      traits: {
+        wallet_address_masked: userId,
+        ...traits
+      }
+    });
+    
+    log(`User identified: ${userId}`);
+  } catch (error) {
+    console.error('Error identifying user:', error);
+  }
+};
+
+/**
+ * Track error events
+ * @param {string} source - Error source
+ * @param {string} message - Error message
+ * @param {Object} details - Error details
+ */
+export const trackError = (source, message, details = {}) => {
+  if (!ANALYTICS_ENABLED) return;
+  
+  try {
+    // Google Analytics
+    if (window.gtag) {
+      window.gtag('event', 'exception', {
+        description: `${source}: ${message}`,
+        fatal: details.fatal || false
+      });
+    }
+    
+    // Mixpanel
+    if (window.mixpanel) {
+      window.mixpanel.track('Error', {
+        source,
+        message,
+        ...details
+      });
+    }
+    
+    // Send to backend
+    sendToBackend('error', {
+      source,
+      message,
+      ...details
+    });
+    
+    log(`Error tracked: ${source} - ${message}`, details);
+  } catch (error) {
+    console.error('Error tracking error event:', error);
+  }
+};
+
+// Helper functions
+
+/**
+ * Send analytics event to backend
+ * @param {string} type - Event type
+ * @param {Object} data - Event data
+ */
+const sendToBackend = async (type, data) => {
+  // Skip if no endpoint or in testing mode
+  if (!ANALYTICS_ENDPOINT || process.env.NODE_ENV === 'test') return;
+  
+  try {
+    // Send event data to backend
+    await fetch(ANALYTICS_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        event: eventName,
-        data: eventData
+        type,
+        data,
+        timestamp: new Date().toISOString(),
+        anonymousId,
+        page: window.location.pathname,
+        url: window.location.href
       }),
-      // Use keepalive to ensure the request completes even if page is unloaded
+      // Use keepalive to ensure the request is sent even if the page is being unloaded
       keepalive: true
-    }).catch(error => {
-      console.error('Analytics send error:', error);
     });
   } catch (error) {
-    console.error('Analytics error:', error);
+    // Silent fail for analytics
+    if (ANALYTICS_DEBUG) {
+      console.error('Failed to send analytics to backend:', error);
+    }
   }
 };
 
 /**
- * Mask sensitive data like wallet addresses
- * @param {string} address - Full wallet address
- * @returns {string} Masked address (e.g., 0x1234...5678)
+ * Ensure analytics is initialized
+ * @returns {boolean} Whether analytics is ready
  */
-const maskAddress = (address) => {
-  if (!address || typeof address !== 'string') return null;
+const ensureInitialized = () => {
+  if (!ANALYTICS_ENABLED) return false;
   
-  if (address.length <= 10) return address;
+  if (!analyticsInitialized) {
+    initializeAnalytics();
+  }
   
-  const prefix = address.substring(0, 6);
-  const suffix = address.substring(address.length - 4);
+  return analyticsInitialized;
+};
+
+/**
+ * Generate random ID for anonymous tracking
+ * @returns {string} Random ID
+ */
+const generateRandomId = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+/**
+ * Log analytics events in debug mode
+ * @param {string} message - Log message
+ * @param {Object} data - Additional data
+ */
+const log = (message, data = {}) => {
+  if (ANALYTICS_DEBUG) {
+    console.log(`📊 Analytics: ${message}`, data);
+  }
+};
+
+/**
+ * Get session duration
+ * @returns {number} Session duration in seconds
+ */
+export const getSessionDuration = () => {
+  const sessionStart = localStorage.getItem('sessionStart');
+  if (!sessionStart) {
+    localStorage.setItem('sessionStart', Date.now().toString());
+    return 0;
+  }
   
-  return `${prefix}...${suffix}`;
+  return Math.floor((Date.now() - parseInt(sessionStart)) / 1000);
+};
+
+/**
+ * Track feature usage
+ * @param {string} feature - Feature name
+ * @param {Object} properties - Usage properties
+ */
+export const trackFeatureUsage = (feature, properties = {}) => {
+  trackEvent(`feature_${feature}`, 'feature_usage', properties);
+};
+
+/**
+ * Performance tracking utility
+ * @param {string} metricName - Metric name
+ * @returns {Function} Function to end timing and record
+ */
+export const startPerformanceTracking = (metricName) => {
+  const startTime = performance.now();
+  
+  return () => {
+    const duration = performance.now() - startTime;
+    trackTiming('performance', metricName, Math.round(duration));
+    return duration;
+  };
 };
 
 export default {
-  initAnalytics,
-  trackWalletConnection,
-  trackTransaction,
-  trackRecommendation,
-  trackOptimizer,
-  trackEngagement,
+  initializeAnalytics,
   trackPageView,
-  trackPerformance,
-  trackError
+  trackEvent,
+  trackPortfolioAction,
+  trackRecommendationAction,
+  trackTransaction,
+  trackRebalance,
+  trackUserAction,
+  trackWalletAction,
+  trackSocialAction,
+  trackUIInteraction,
+  trackTiming,
+  trackError,
+  trackFeatureUsage,
+  startPerformanceTracking,
+  identifyUser,
+  getSessionDuration,
+  EVENT_CATEGORIES
 };
